@@ -51,69 +51,48 @@ const Profile = () => {
 
     // 활동 데이터와 월 레이블을 useMemo로 계산
     const { months, activityData, currentWeekIndex } = useMemo(() => {
-        console.log('선택된 연도:', selectedYear);
+        console.log("활동 데이터 생성 중...");
+        console.log(`선택된 연도: ${selectedYear}`);
+        console.log(`사용자 게시물 수: ${userPosts.length}`);
         
-        // 선택된 연도의 1월 1일과 12월 31일 설정
-        const startOfYear = new Date(selectedYear, 0, 1); // 1월 1일
-        const endOfYear = new Date(selectedYear, 11, 31); // 12월 31일
-        
-        console.log('연도 시작일:', startOfYear.toISOString());
-        console.log('연도 종료일:', endOfYear.toISOString());
-        
-        // 1월 1일의 요일 확인 (0: 일요일, 1: 월요일, ..., 6: 토요일)
-        const firstDayOfWeek = startOfYear.getDay();
-        console.log('1월 1일의 요일:', firstDayOfWeek);
-        
-        // 12월 31일의 요일 확인
-        const lastDayOfWeek = endOfYear.getDay();
-        console.log('12월 31일의 요일:', lastDayOfWeek);
-        
-        // 사용자 게시물 날짜별 카운트 맵 생성
+        // 게시물 날짜별 카운트
         const postCountByDate = {};
+        userPosts.forEach(post => {
+            const date = new Date(post.createdAt);
+            const dateKey = date.toISOString().split('T')[0];
+            postCountByDate[dateKey] = (postCountByDate[dateKey] || 0) + 1;
+            console.log(`게시물 날짜: ${dateKey}`);
+        });
         
-        if (userPosts.length > 0) {
-            userPosts.forEach(post => {
-                const postDate = new Date(post.createdAt);
-                const dateKey = postDate.toISOString().split('T')[0]; // YYYY-MM-DD 형식
-                
-                // 선택된 연도의 게시물만 카운트
-                if (postDate.getFullYear() === selectedYear) {
-                    console.log('게시물 날짜:', postDate, '날짜 키:', dateKey);
-                    
-                    if (postCountByDate[dateKey]) {
-                        postCountByDate[dateKey]++;
-                    } else {
-                        postCountByDate[dateKey] = 1;
-                    }
-                }
-            });
-        }
-        
-        console.log('날짜별 게시물 카운트:', postCountByDate);
-        
-        // 주 단위로 데이터 생성
         const weeks = [];
-        
-        // 현재 날짜가 속한 주 인덱스
         let currentWeekIndex = -1;
         
-        // 1월 1일이 속한 주의 시작일 (일요일)
-        const firstWeekStart = new Date(startOfYear);
-        firstWeekStart.setDate(firstWeekStart.getDate() - firstDayOfWeek);
+        // 선택된 연도의 1월 1일
+        const startOfYear = new Date(selectedYear, 0, 1);
+        // 1월 1일의 요일 (0: 일요일, 1: 월요일, ..., 6: 토요일)
+        const firstDayOfWeek = startOfYear.getDay();
+        
+        // 월요일부터 시작하는 주 계산을 위해 조정
+        // 1월 1일이 속한 주의 월요일 찾기
+        const firstMonday = new Date(startOfYear);
+        // 1이 월요일, 2가 화요일, ..., 0이 일요일
+        const daysSinceMonday = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+        firstMonday.setDate(firstMonday.getDate() - daysSinceMonday);
         
         // 주 단위로 데이터 생성 (최대 53주)
         for (let weekOffset = 0; weekOffset < 53; weekOffset++) {
-            const weekStart = new Date(firstWeekStart);
+            const weekStart = new Date(firstMonday);
             weekStart.setDate(weekStart.getDate() + (weekOffset * 7));
             
             // 이번 주가 다음 연도에 속하면 중단
-            if (weekStart.getFullYear() > selectedYear) {
+            if (weekStart.getFullYear() > selectedYear && weekStart.getMonth() > 0) {
                 break;
             }
             
             const week = [];
             let hasValidDay = false; // 이번 주에 유효한 날짜가 있는지 확인
             
+            // 월요일부터 일요일까지 (월요일이 0, 일요일이 6)
             for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
                 const currentDate = new Date(weekStart);
                 currentDate.setDate(weekStart.getDate() + dayOffset);
@@ -147,12 +126,15 @@ const Profile = () => {
                     else level = 4;
                 }
                 
+                // dayOffset이 그대로 요일 인덱스가 됨 (0: 월요일, 1: 화요일, ..., 6: 일요일)
+                
                 week.push({
                     date: currentDate,
                     count: isInSelectedYear ? level : -1, // 선택된 연도에 속하지 않으면 -1
                     actualCount: count,
                     dateKey,
-                    isToday
+                    isToday,
+                    dayOfWeek: dayOffset // 요일 인덱스 (0: 월, 1: 화, ..., 6: 일)
                 });
             }
             
@@ -336,46 +318,52 @@ const Profile = () => {
                                     key={weekIndex} 
                                     className="grid grid-rows-7 gap-2"
                                 >
-                                    {week.map((day, dayIndex) => (
-                                        <div
-                                            key={dayIndex}
-                                            className={`
-                                                w-4 h-4 rounded-sm 
-                                                ${day.count === -1 ? 'invisible' : 'cursor-pointer'}
-                                                ${day.count === 0 ? 'bg-base-300' :
-                                                  day.count === 1 ? 'bg-primary/20' :
-                                                  day.count === 2 ? 'bg-primary/40' :
-                                                  day.count === 3 ? 'bg-primary/60' :
-                                                  'bg-primary'}
-                                                ${day.isToday ? 'ring-2 ring-primary ring-offset-1' : 'hover:ring-1 hover:ring-primary hover:ring-offset-1'}
-                                                group relative
-                                            `}
-                                        >
-                                            {/* CSS로만 구현된 툴팁 */}
-                                            {day.count !== -1 && (
-                                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1
-                                                    bg-base-100 text-xs rounded shadow-lg whitespace-nowrap z-[200] border border-base-300
-                                                    opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all
-                                                    pointer-events-none"
-                                                >
-                                                    {day.actualCount > 0 ? (
-                                                        <span className="font-bold text-primary">
-                                                            {day.actualCount}개의 작품 업로드
-                                                        </span>
-                                                    ) : (
-                                                        <span>작품 없음</span>
-                                                    )}
-                                                    <br />
-                                                    {day.date.toLocaleDateString('ko-KR', { 
-                                                        weekday: 'long',
-                                                        year: 'numeric',
-                                                        month: 'long',
-                                                        day: 'numeric'
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                    {/* 요일별로 정렬하여 표시 */}
+                                    {[0, 1, 2, 3, 4, 5, 6].map(dayIndex => {
+                                        const day = week.find(d => d.dayOfWeek === dayIndex);
+                                        if (!day) return <div key={dayIndex} className="w-4 h-4 invisible"></div>;
+                                        
+                                        return (
+                                            <div
+                                                key={dayIndex}
+                                                className={`
+                                                    w-4 h-4 rounded-sm 
+                                                    ${day.count === -1 ? 'invisible' : 'cursor-pointer'}
+                                                    ${day.count === 0 ? 'bg-base-300' :
+                                                      day.count === 1 ? 'bg-primary/20' :
+                                                      day.count === 2 ? 'bg-primary/40' :
+                                                      day.count === 3 ? 'bg-primary/60' :
+                                                      'bg-primary'}
+                                                    ${day.isToday ? 'ring-2 ring-primary ring-offset-1' : 'hover:ring-1 hover:ring-primary hover:ring-offset-1'}
+                                                    group relative
+                                                `}
+                                            >
+                                                {/* CSS로만 구현된 툴팁 */}
+                                                {day.count !== -1 && (
+                                                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1
+                                                        bg-base-100 text-xs rounded shadow-lg whitespace-nowrap z-[200] border border-base-300
+                                                        opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all
+                                                        pointer-events-none"
+                                                    >
+                                                        {day.actualCount > 0 ? (
+                                                            <span className="font-bold text-primary">
+                                                                {day.actualCount}개의 작품 업로드
+                                                            </span>
+                                                        ) : (
+                                                            <span>작품 없음</span>
+                                                        )}
+                                                        <br />
+                                                        {day.date.toLocaleDateString('ko-KR', { 
+                                                            weekday: 'long',
+                                                            year: 'numeric',
+                                                            month: 'long',
+                                                            day: 'numeric'
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             ))}
                         </div>
