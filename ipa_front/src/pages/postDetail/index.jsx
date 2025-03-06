@@ -280,10 +280,7 @@ const PostDetail = () => {
                                     <span className="font-medium">생성 날짜: </span>
                                     <span>{new Date(post.createdAt).toLocaleString()}</span>
                                 </div>
-                                <div>
-                                    <span className="font-medium">좋아요: </span>
-                                    <span>{post.likes || 0}</span>
-                                </div>
+                                
                             </div>
                         </div>
                     </div>
