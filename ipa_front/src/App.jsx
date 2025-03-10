@@ -3,15 +3,23 @@ import PostList from '@/pages/post'
 import Header from "@/components/layout/header.jsx";
 import RootLayout from "@/components/layout/RootLayout.jsx";
 import AuthForm from '@/pages/auth';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import PostDetail from '@/pages/postDetail';
-import { AuthProvider } from '@/pages/auth/components/AuthContext';
+import { AuthProvider, useAuth } from '@/pages/auth/components/AuthContext';
 import Profile from '@/pages/personal';
 import PublicProfile from './pages/personal/components/publicProfile';
 import Search from '@/pages/search';
 import UploadPage from '@/pages/upload';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useState, useEffect } from 'react';
+
+// 홈 리다이렉트 컴포넌트 - 로그인 상태에 따라 적절한 페이지로 리다이렉트
+const HomeRedirect = () => {
+  const { isAuthenticated } = useAuth();
+  
+  // 로그인 상태에 따라 포스트 목록 또는 로그인 페이지로 리다이렉트
+  return isAuthenticated ? <PostList /> : <Navigate to="/login" replace />;
+};
 
 const App = () => {
   const [theme, setTheme] = useState(() => {
@@ -32,8 +40,12 @@ const App = () => {
           <Router>
               <Routes>
                   <Route element={<RootLayout theme={theme} setTheme={setTheme} />}>
-                      <Route path="/" element={<PostList />} />
-                      <Route path="/post" element={<PostList />} />
+                      <Route path="/" element={<HomeRedirect />} />
+                      <Route path="/post" element={
+                          <ProtectedRoute>
+                              <PostList />
+                          </ProtectedRoute>
+                      } />
                       <Route path="/post/:id" element={<PostDetail />} />
                       <Route path="/login" element={<AuthForm theme={theme} setTheme={setTheme} />} />
                       <Route path="/posts/:id" element={<PostDetail />} />

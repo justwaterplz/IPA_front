@@ -4,10 +4,34 @@ import 'react-toastify/dist/ReactToastify.css';
 import PostCard from '@/pages/post/components/postCards.jsx';
 import { useNavigate, Link } from 'react-router-dom';
 
+// 오늘 날짜인지 확인하는 함수 추가
+const isToday = (dateString) => {
+    const today = new Date();
+    const postDate = new Date(dateString);
+    
+    return (
+        postDate.getDate() === today.getDate() &&
+        postDate.getMonth() === today.getMonth() &&
+        postDate.getFullYear() === today.getFullYear()
+    );
+};
+
 const POSTS_PER_PAGE = 40;
 const BoardGrid = ({ posts }) => {
     const [currentPage, setCurrentPage] = useState(1);
     const navigate = useNavigate();
+    
+    // 이미지 URL을 전체 URL로 변환하는 함수
+    const getFullImageUrl = (imageUrl) => {
+        if (!imageUrl) return '';
+        
+        // 이미 완전한 URL인 경우
+        if (imageUrl.startsWith('http')) return imageUrl;
+        
+        // 상대 경로인 경우
+        // 백엔드 URL이 이미 포함되어 있으므로 그대로 반환
+        return imageUrl;
+    };
     
     const sortedPosts = [...posts].reverse();
     const indexOfLastPost = currentPage * POSTS_PER_PAGE;
@@ -54,9 +78,13 @@ const BoardGrid = ({ posts }) => {
                             <div className="relative aspect-square overflow-hidden rounded-lg shadow-lg transition-transform duration-300 group-hover:scale-105">
                                 {/* 이미지 */}
                                 <img
-                                    src={post.imageUrl}
+                                    src={getFullImageUrl(post.image)}
                                     alt={post.prompt}
                                     className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                        console.error('이미지 로드 실패:', post.image);
+                                        e.target.src = '/placeholder-image.jpg'; // 기본 이미지로 대체
+                                    }}
                                 />
                                 
                                 {/* 제목을 위한 그라데이션만 항상 표시 */}
@@ -66,10 +94,31 @@ const BoardGrid = ({ posts }) => {
                                     </h3>
                                 </div>
 
-                                {/* 뱃지 */}
+                                {/* 뱃지 영역 변경 - 좌측 상단과 우측 상단으로 분리 */}
+                                {/* New 뱃지 - 좌측 상단으로 이동 */}
+                                {isToday(post.createdAt) && (
+                                    <div className="absolute top-2 left-2 z-10">
+                                        <span className="badge badge-secondary font-bold">NEW</span>
+                                    </div>
+                                )}
+                                
+                                {/* 모델 뱃지 - 우측 상단 유지 */}
                                 {post.model && (
                                     <div className="absolute top-2 right-2 z-10">
-                                        <span className="badge badge-primary">{post.model}</span>
+                                        <span className="badge badge-primary">
+                                            {typeof post.model === 'object' ? post.model.name : post.model}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 태그 표시 */}
+                                {post.tags && post.tags.length > 0 && (
+                                    <div className="absolute bottom-2 left-2 z-10 flex gap-1">
+                                        {post.tags.map((tag, index) => (
+                                            <span key={index} className="badge badge-sm badge-outline">
+                                                {typeof tag === 'object' ? tag.name : tag}
+                                            </span>
+                                        ))}
                                     </div>
                                 )}
 

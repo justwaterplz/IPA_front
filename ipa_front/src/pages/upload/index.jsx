@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, X, Image as ImageIcon, Plus, Tag } from 'lucide-react';
 import Header from '@/components/layout/header';
-import { postService } from '@/utils/localStorageDB';
+import { postService, fileService } from '@/utils/apiService';
 import { useAuth } from '@/pages/auth/components/AuthContext';
 
 // AI 모델 목록 (실제로는 API에서 가져올 수 있음)
@@ -31,7 +31,7 @@ const AI_MODELS = [
 
 const UploadPage = () => {
     const navigate = useNavigate();
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
     const [selectedFile, setSelectedFile] = useState(null);
     const [previewUrl, setPreviewUrl] = useState('');
     const [prompt, setPrompt] = useState('');
@@ -41,6 +41,7 @@ const UploadPage = () => {
     const [tagInput, setTagInput] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState('');
+    const [userPostCount, setUserPostCount] = useState(0);
     const [errors, setErrors] = useState({
         image: '',
         prompt: '',
@@ -48,10 +49,33 @@ const UploadPage = () => {
         version: ''
     });
 
+    // 최대 게시물 수 제한
+    const MAX_POSTS_PER_USER = 10;
+
     // 테마 변경용
     const [theme, setTheme] = useState(() => {
         return localStorage.getItem('theme') || 'light';
     });
+
+    // 사용자 게시물 수 확인
+    useEffect(() => {
+        const fetchUserPostCount = async () => {
+            if (user) {
+                try {
+                    const response = await postService.getAllPosts();
+                    // 페이지네이션 형식의 응답에서 results 배열 추출
+                    const allPosts = response.results || [];
+                    const userPosts = allPosts.filter(post => post.userId === user.id);
+                    setUserPostCount(userPosts.length);
+                } catch (error) {
+                    console.error('사용자 게시물 수를 가져오는 중 오류 발생:', error);
+                    setUserPostCount(0);
+                }
+            }
+        };
+        
+        fetchUserPostCount();
+    }, [user]);
 
     // 선택된 모델에 따른 버전 목록
     const availableVersions = selectedModel 
@@ -178,39 +202,73 @@ const UploadPage = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        // 유효성 검사
-        const newErrors = {
-            image: !selectedFile ? '이미지는 필수 입력 항목입니다.' : '',
-            prompt: !prompt.trim() ? '프롬프트는 필수 입력 항목입니다.' : '',
-            model: !selectedModel ? 'AI 모델을 선택해주세요.' : '',
-            version: !selectedVersion ? '모델 버전을 선택해주세요.' : ''
-        };
-        
-        setErrors(newErrors);
-        
-        // 에러가 있으면 제출하지 않음
-        if (Object.values(newErrors).some(error => error)) {
+        if (!selectedFile) {
+            setError('이미지를 선택해주세요.');
             return;
         }
-
+        
+        if (!prompt.trim()) {
+            setError('프롬프트를 입력해주세요.');
+            return;
+        }
+        
         setIsUploading(true);
         setError('');
 
         try {
-            // 이미지를 Base64로 변환
-            const imageBase64 = await convertFileToBase64(selectedFile);
+            console.log('파일 업로드 및 게시물 생성 시작:', selectedFile);
             
-            // 로컬 스토리지에 게시물 저장
-            const newPost = postService.createPost({
-                imageUrl: imageBase64,
-                prompt,
+            // FormData 직접 생성
+            const formData = new FormData();
+            
+            // 파일 타입에 따라 적절한 필드 이름 사용
+            if (selectedFile.type.startsWith('image/')) {
+                formData.append('image', selectedFile);
+            } else {
+                formData.append('file', selectedFile);
+            }
+            
+            // 게시물 정보 추가
+            formData.append('title', prompt.substring(0, 100)); // 프롬프트의 첫 100자를 제목으로 사용
+            formData.append('content', prompt);
+            formData.append('model', selectedModel);
+            formData.append('model_version', selectedVersion);
+            
+            // 태그 추가 (백엔드에서 지원하는 형식으로)
+            if (tags && tags.length > 0) {
+                // 백엔드가 JSON 문자열을 받는 경우
+                formData.append('tag_names', JSON.stringify(tags));
+                
+                // 또는 백엔드가 쉼표로 구분된 문자열을 받는 경우
+                // formData.append('tag_names', tags.join(','));
+                
+                // 또는 백엔드가 여러 필드를 받는 경우
+                // tags.forEach(tag => formData.append('tag_names', tag));
+            }
+            
+            console.log('게시물 생성 요청 데이터:', {
+                title: prompt.substring(0, 100),
+                content: prompt,
                 model: selectedModel,
-                modelVersion: selectedVersion,
-                tags
+                model_version: selectedVersion,
+                tags: tags
             });
             
-            // 성공 시 상세 페이지로 이동
-            navigate(`/posts/${newPost.id}`);
+            // 파일 업로드와 게시물 생성을 한 번에 처리
+            const response = await postService.createPost(formData);
+            
+            console.log('게시물 생성 완료:', response);
+            
+            // 응답에 id가 있는지 확인
+            if (response && response.id) {
+                console.log('생성된 게시물 ID:', response.id);
+                // 성공 시 상세 페이지로 이동
+                navigate(`/posts/${response.id}/`);
+            } else {
+                console.warn('게시물이 생성되었지만 ID가 없습니다. 메인 페이지로 이동합니다.');
+                // ID가 없으면 메인 페이지로 이동
+                navigate('/');
+            }
         } catch (err) {
             console.error('업로드 오류:', err);
             setError(err.message || '이미지 업로드 중 오류가 발생했습니다. 다시 시도해주세요.');
@@ -226,6 +284,36 @@ const UploadPage = () => {
             reader.onload = () => resolve(reader.result);
             reader.onerror = (error) => reject(error);
             reader.readAsDataURL(file);
+        });
+    };
+
+    // 이미지 크기 줄이기 함수 추가
+    const resizeImage = (base64Str, maxWidth = 400, maxHeight = 400) => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.src = base64Str;
+            img.onload = () => {
+                let width = img.width;
+                let height = img.height;
+                
+                // 이미지가 최대 크기보다 크면 비율 유지하며 축소
+                if (width > maxWidth || height > maxHeight) {
+                    const ratio = Math.min(maxWidth / width, maxHeight / height);
+                    width = Math.floor(width * ratio);
+                    height = Math.floor(height * ratio);
+                }
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // 이미지 품질 조정 (0.5 = 50% 품질)
+                const resizedBase64 = canvas.toDataURL('image/jpeg', 0.5);
+                resolve(resizedBase64);
+            };
         });
     };
 

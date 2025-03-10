@@ -14,7 +14,20 @@ import {
   Maximize
 } from 'lucide-react';
 import 'react-toastify/dist/ReactToastify.css';
-import { postService } from '@/utils/localStorageDB';
+import { postService } from '@/utils/apiService';
+import { API_BASE_URL } from '@/utils/apiService';
+
+// 오늘 날짜인지 확인하는 함수 추가
+const isToday = (dateString) => {
+    const today = new Date();
+    const postDate = new Date(dateString);
+    
+    return (
+        postDate.getDate() === today.getDate() &&
+        postDate.getMonth() === today.getMonth() &&
+        postDate.getFullYear() === today.getFullYear()
+    );
+};
 
 const PostDetail = () => {
     const { id } = useParams();
@@ -24,10 +37,68 @@ const PostDetail = () => {
     
     // 게시물 데이터 가져오기
     useEffect(() => {
-        const fetchPost = () => {
-            const foundPost = postService.getPostById(id);
-            setPost(foundPost);
-            setLoading(false);
+        const fetchPost = async () => {
+            try {
+                const foundPost = await postService.getPostById(id);
+                console.log('게시물 상세 데이터 (원본):', foundPost);
+                
+                // 백엔드 응답 구조에 맞게 데이터 매핑
+                if (foundPost) {
+                    const mappedPost = {
+                        ...foundPost,
+                        // 이미지 URL이 상대 경로인 경우 전체 URL로 변환
+                        imageUrl: foundPost.image 
+                            ? foundPost.image.startsWith('http') 
+                                ? foundPost.image 
+                                : `${API_BASE_URL}${foundPost.image}`
+                            : null,
+                        fileUrl: foundPost.file 
+                            ? foundPost.file.startsWith('http')
+                                ? foundPost.file
+                                : `${API_BASE_URL}${foundPost.file}`
+                            : null,
+                        prompt: foundPost.content,
+                        userId: foundPost.author?.id,
+                        username: foundPost.author?.username,
+                        userProfileImage: foundPost.author?.profile_image 
+                            ? foundPost.author.profile_image.startsWith('http')
+                                ? foundPost.author.profile_image
+                                : `${API_BASE_URL}${foundPost.author.profile_image}`
+                            : 'https://placehold.co/100x100/9370DB/FFFFFF?text=U',
+                        createdAt: foundPost.created_at,
+                        updatedAt: foundPost.updated_at,
+                        tags: Array.isArray(foundPost.tags) 
+                            ? foundPost.tags.flatMap(tag => {
+                                // 태그 객체에서 name 속성이 JSON 문자열인 경우
+                                if (typeof tag === 'object' && tag !== null && tag.name) {
+                                    try {
+                                        // JSON 문자열을 파싱
+                                        const parsedTags = JSON.parse(tag.name);
+                                        // 배열인 경우 모든 요소를 반환
+                                        if (Array.isArray(parsedTags)) {
+                                            return parsedTags;
+                                        }
+                                        // 배열이 아닌 경우 단일 태그로 처리
+                                        return [tag.name];
+                                    } catch {
+                                        // JSON 파싱 실패시 원래 이름을 사용
+                                        return [tag.name];
+                                    }
+                                }
+                                // 문자열인 경우 그대로 사용
+                                return [tag];
+                            }).filter(tag => tag !== '')
+                            : []
+                    };
+                    console.log('매핑된 게시물 데이터:', mappedPost);
+                    setPost(mappedPost);
+                }
+            } catch (error) {
+                console.error('게시물을 가져오는 중 오류 발생:', error);
+                toast.error('게시물을 불러올 수 없습니다.');
+            } finally {
+                setLoading(false);
+            }
         };
         
         fetchPost();
@@ -47,17 +118,57 @@ const PostDetail = () => {
     useEffect(() => {
         if (!id) return;
         
-        const allPosts = postService.getAllPosts();
-        const currentIndex = allPosts.findIndex(p => p.id === id);
+        const fetchAllPosts = async () => {
+            try {
+                const response = await postService.getAllPosts();
+                
+                // 응답 형식 확인
+                let allPosts = [];
+                if (response && response.results && Array.isArray(response.results)) {
+                    allPosts = response.results;
+                } else if (Array.isArray(response)) {
+                    allPosts = response;
+                } else {
+                    console.warn('getAllPosts 응답이 예상 형식이 아닙니다:', response);
+                    return;
+                }
+                
+                if (allPosts.length === 0) {
+                    console.log('게시물이 없습니다.');
+                    return;
+                }
+                
+                console.log('모든 게시물:', allPosts);
+                
+                // id가 문자열인지 숫자인지 확인하여 비교
+                const postId = typeof id === 'string' ? id : id.toString();
+                const currentIndex = allPosts.findIndex(p => 
+                    (p.id && p.id.toString() === postId)
+                );
+                
+                console.log('현재 게시물 인덱스:', currentIndex, '현재 ID:', postId);
+                
+                if (currentIndex > 0) {
+                    setPrevPostId(allPosts[currentIndex - 1].id);
+                }
+                
+                if (currentIndex !== -1 && currentIndex < allPosts.length - 1) {
+                    setNextPostId(allPosts[currentIndex + 1].id);
+                }
+            } catch (error) {
+                console.error('이전/다음 게시물을 가져오는 중 오류 발생:', error);
+            }
+        };
         
-        if (currentIndex > 0) {
-            setPrevPostId(allPosts[currentIndex - 1].id);
-        }
-        
-        if (currentIndex < allPosts.length - 1) {
-            setNextPostId(allPosts[currentIndex + 1].id);
-        }
+        fetchAllPosts();
     }, [id]);
+    
+    // 북마크 상태 확인
+    useEffect(() => {
+        if (post) {
+            setIsBookmarked(post.is_bookmarked || false);
+        }
+    }, [post]);
     
     // 로딩 중일 때
     if (loading) {
@@ -83,22 +194,30 @@ const PostDetail = () => {
     }
 
     // 복사 기능
-    const handleCopyPrompt = async (prompt) => {
+    const handleCopyPrompt = async (content) => {
         try {
-            await navigator.clipboard.writeText(prompt);
+            await navigator.clipboard.writeText(content);
             setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-            toast.success('프롬프트가 복사되었습니다!');
-        } catch (err) {
-            toast.error('프롬프트 복사에 실패했습니다.');
+            toast.success('내용이 클립보드에 복사되었습니다.');
+            
+            // 3초 후 복사 상태 초기화
+            setTimeout(() => setCopied(false), 3000);
+        } catch (error) {
+            console.error('클립보드 복사 오류:', error);
+            toast.error('클립보드 복사에 실패했습니다.');
         }
     };
     
     // 북마크 기능
-    const handleBookmark = () => {
-        setIsBookmarked(!isBookmarked);
-        toast.success(isBookmarked ? '북마크가 해제되었습니다.' : '북마크에 추가되었습니다.');
-        // 여기에 실제 북마크 API 호출 코드 추가
+    const handleBookmark = async () => {
+        try {
+            await postService.toggleBookmark(id);
+            setIsBookmarked(!isBookmarked);
+            toast.success(isBookmarked ? '북마크가 해제되었습니다.' : '북마크에 추가되었습니다.');
+        } catch (error) {
+            console.error('북마크 처리 중 오류:', error);
+            toast.error('북마크 처리에 실패했습니다.');
+        }
     };
     
     // 공유 기능
@@ -107,8 +226,8 @@ const PostDetail = () => {
         try {
             if (navigator.share) {
                 await navigator.share({
-                    title: post.prompt || '멋진 AI 이미지',
-                    text: `${post.author.displayName}님의 AI 이미지 - "${post.prompt.substring(0, 50)}${post.prompt.length > 50 ? '...' : ''}"`,
+                    title: post.title || '멋진 AI 이미지',
+                    text: `${post.username}님의 게시물 - "${post.content?.substring(0, 50)}${post.content?.length > 50 ? '...' : ''}"`,
                     url: url,
                 });
             } else {
@@ -124,20 +243,30 @@ const PostDetail = () => {
     // 이미지 다운로드 기능
     const handleDownload = async () => {
         try {
-            const response = await fetch(post.imageUrl);
+            const url = post.imageUrl || post.fileUrl;
+            if (!url) {
+                toast.error('다운로드할 파일이 없습니다.');
+                return;
+            }
+
+            const response = await fetch(url);
             const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
+            const downloadUrl = window.URL.createObjectURL(blob);
             
             const a = document.createElement('a');
-            a.href = url;
-            a.download = `${post.prompt.substring(0, 20) || 'ai-image'}-${post.id}.png`;
+            a.href = downloadUrl;
+            // 파일명 결정 (이미지인 경우 .png, 파일인 경우 원래 확장자 유지)
+            const originalPath = post.image || post.file || '';
+            const extension = originalPath.split('.').pop() || 'png';
+            a.download = `${post.title || 'download'}.${extension}`;
             document.body.appendChild(a);
             a.click();
-            window.URL.revokeObjectURL(url);
+            window.URL.revokeObjectURL(downloadUrl);
             document.body.removeChild(a);
             
-            toast.success('이미지가 다운로드되었습니다.');
+            toast.success('파일이 다운로드되었습니다.');
         } catch (err) {
+            console.error('다운로드 오류:', err);
             toast.error('다운로드 중 오류가 발생했습니다.');
         }
     };
@@ -191,12 +320,22 @@ const PostDetail = () => {
                 <div className="w-1/2">
                     <div className="relative">
                         <div className="aspect-square bg-base-300 overflow-hidden">
-                            <img 
-                                src={post.imageUrl}
-                                alt={post.prompt || '생성된 이미지'}
-                                className="w-full h-full object-cover cursor-pointer"
-                                onClick={() => setShowFullscreenImage(true)}
-                            />
+                            {post.imageUrl ? (
+                                <img 
+                                    src={post.imageUrl}
+                                    alt={post.prompt || '생성된 이미지'}
+                                    className="w-full h-full object-cover cursor-pointer"
+                                    onClick={() => setShowFullscreenImage(true)}
+                                    onError={(e) => {
+                                        console.error('이미지 로드 실패:', post.imageUrl);
+                                        e.target.src = 'https://placehold.co/600x400/9370DB/FFFFFF?text=Image+Not+Found';
+                                    }}
+                                />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-base-200">
+                                    <span className="text-base-content/50">이미지를 찾을 수 없습니다</span>
+                                </div>
+                            )}
                         </div>
                         
                         {/* 이미지 액션 버튼들 (오버레이) */}
@@ -231,9 +370,15 @@ const PostDetail = () => {
                             />
                             <span className="font-medium text-base-content">{post.username}</span>
                         </Link>
-                        <span className="text-sm text-base-content/60">
-                            {new Date(post.createdAt).toLocaleDateString()}
-                        </span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-base-content/60">
+                                {new Date(post.createdAt).toLocaleDateString()}
+                            </span>
+                            {/* New 뱃지 - 오늘 업로드된 게시물에만 표시 */}
+                            {isToday(post.createdAt) && (
+                                <span className="badge badge-secondary font-bold">NEW</span>
+                            )}
+                        </div>
                     </div>
                     
                     {/* 액션 버튼들 */}
@@ -256,13 +401,13 @@ const PostDetail = () => {
 
                     {/* 프롬프트 */}
                     <div className="mb-4">
-                        <h3 className="text-sm font-medium mb-2">프롬프트</h3>
+                        <h3 className="text-sm font-medium mb-2">내용</h3>
                         <div className="bg-base-300 p-3 rounded-lg relative group">
-                            <p className="text-sm whitespace-pre-wrap pr-8">{post.prompt}</p>
+                            <p className="text-sm whitespace-pre-wrap pr-8">{post.content}</p>
                             <button 
-                                onClick={() => handleCopyPrompt(post.prompt)}
+                                onClick={() => handleCopyPrompt(post.content)}
                                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md opacity-50 hover:opacity-100 hover:bg-base-100 transition-opacity"
-                                title="프롬프트 복사"
+                                title="내용 복사"
                             >
                                 <ClipboardCopy size={14} />
                             </button>
@@ -285,6 +430,26 @@ const PostDetail = () => {
                         </div>
                     </div>
                     
+                    {/* 태그 정보 */}
+                    {post.tags && post.tags.length > 0 && (
+                        <div className="mb-4">
+                            <div className="flex items-center gap-1 mb-2">
+                                <Tag size={14} />
+                                <h3 className="text-sm font-medium">태그</h3>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                                {post.tags.map((tag, index) => (
+                                    <span
+                                        key={index}
+                                        className="badge badge-ghost text-xs select-none"
+                                    >
+                                        #{tag}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* AI 모델 정보 */}
                     {post.model && (
                         <div className="mb-4">
@@ -302,34 +467,13 @@ const PostDetail = () => {
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                                     <div>
                                         <span className="font-medium">모델: </span>
-                                        <span>{post.model}</span>
+                                        <span>{typeof post.model === 'object' ? post.model.name : post.model}</span>
                                     </div>
                                     <div>
                                         <span className="font-medium">버전: </span>
                                         <span>{post.modelVersion}</span>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {/* 태그 정보 */}
-                    {post.tags && post.tags.length > 0 && (
-                        <div className="mb-4">
-                            <div className="flex items-center gap-1 mb-2">
-                                <Tag size={14} />
-                                <h3 className="text-sm font-medium">태그</h3>
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                                {post.tags.map(tag => (
-                                    <Link 
-                                        key={tag}
-                                        to={`/search?query=${tag}&target=tag`}
-                                        className="badge badge-primary badge-outline text-xs"
-                                    >
-                                        {tag}
-                                    </Link>
-                                ))}
                             </div>
                         </div>
                     )}

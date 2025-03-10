@@ -2,29 +2,45 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/pages/auth/components/AuthContext';
 import { Edit, X, Check, Loader, User, ArrowLeft, Calendar } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { postService } from '@/utils/localStorageDB';
+import { postService, userService } from '@/utils/apiService';
 
 const Profile = () => {
-    const { user } = useAuth();
+    const { user, updateUser } = useAuth();
     const [isEditingName, setIsEditingName] = useState(false);
     const [newName, setNewName] = useState(user?.username || '');
     const [isLoading, setIsLoading] = useState(false);
     const [imageLoaded, setImageLoaded] = useState({});
     const [currentSlide, setCurrentSlide] = useState(0);
     const [userPosts, setUserPosts] = useState([]);
+    const [userBookmarks, setUserBookmarks] = useState([]);
     const [currentDate, setCurrentDate] = useState(new Date('2025-03-06T00:00:00'));
     const [selectedYear, setSelectedYear] = useState(2025);
+    const [activeTab, setActiveTab] = useState('posts'); // 'posts' 또는 'bookmarks'
     
     // 사용자 게시물 가져오기
     useEffect(() => {
-        if (user) {
-            console.log('사용자 정보:', user);
-            // 모든 게시물을 가져와서 현재 사용자의 게시물만 필터링
-            const allPosts = postService.getAllPosts();
-            const userPostsData = allPosts.filter(post => post.userId === user.id);
-            console.log('필터링된 사용자 게시물:', userPostsData);
-            setUserPosts(userPostsData);
-        }
+        const fetchUserData = async () => {
+            if (user) {
+                try {
+                    console.log('사용자 정보:', user);
+                    
+                    // 사용자 게시물 가져오기
+                    const postsResponse = await postService.getUserPosts();
+                    console.log('사용자 게시물:', postsResponse);
+                    setUserPosts(postsResponse.results || []);
+                    
+                    // 사용자 북마크 가져오기
+                    const bookmarksResponse = await postService.getUserBookmarks();
+                    setUserBookmarks(bookmarksResponse.results || []);
+                } catch (error) {
+                    console.error('사용자 데이터를 가져오는 중 오류 발생:', error);
+                    setUserPosts([]);
+                    setUserBookmarks([]);
+                }
+            }
+        };
+        
+        fetchUserData();
     }, [user]);
     
     // 이름 변경 핸들러
@@ -33,11 +49,12 @@ const Profile = () => {
         
         setIsLoading(true);
         try {
-            // API 호출 로직이 들어갈 자리
-            await new Promise(resolve => setTimeout(resolve, 1000)); // 임시 딜레이
+            // API 호출 - 사용자 정보 업데이트
+            await updateUser({ username: newName });
             setIsEditingName(false);
             // 성공 토스트 메시지
         } catch (error) {
+            console.error('사용자 정보 업데이트 중 오류 발생:', error);
             // 에러 토스트 메시지
         } finally {
             setIsLoading(false);

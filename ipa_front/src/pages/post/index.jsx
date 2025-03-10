@@ -2,31 +2,48 @@
 import BoardGrid from "@/pages/post/components/boardGrid.jsx";
 import Header from "@/components/layout/header.jsx";
 import { useEffect, useState } from 'react';
-import { postService } from '@/utils/localStorageDB';
+import { postService } from '@/utils/apiService';
 
 const Post = () => {
     const [posts, setPosts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [pagination, setPagination] = useState({
+        count: 0,
+        next: null,
+        previous: null,
+        currentPage: 1
+    });
 
     // 게시물 데이터 가져오기
     useEffect(() => {
-        const fetchPosts = () => {
-            const allPosts = postService.getAllPosts();
-            setPosts(allPosts);
+        const fetchPosts = async () => {
+            try {
+                setLoading(true);
+                const response = await postService.getAllPosts(null, pagination.currentPage);
+                setPosts(response.results || []);
+                setPagination({
+                    count: response.count || 0,
+                    next: response.next,
+                    previous: response.previous,
+                    currentPage: pagination.currentPage
+                });
+            } catch (error) {
+                console.error('게시물을 가져오는 중 오류 발생:', error);
+            } finally {
+                setLoading(false);
+            }
         };
         
         fetchPosts();
-        
-        // 로컬 스토리지 변경 감지를 위한 이벤트 리스너
-        const handleStorageChange = () => {
-            fetchPosts();
-        };
-        
-        window.addEventListener('storage', handleStorageChange);
-        
-        return () => {
-            window.removeEventListener('storage', handleStorageChange);
-        };
-    }, []);
+    }, [pagination.currentPage]);
+
+    // 페이지 변경 핸들러
+    const handlePageChange = (newPage) => {
+        setPagination(prev => ({
+            ...prev,
+            currentPage: newPage
+        }));
+    };
 
     // localStorage에서 테마를 가져오거나, 없으면 'light'를 기본값으로 사용
     const [theme, setTheme] = useState(() => {
@@ -44,12 +61,43 @@ const Post = () => {
             <div className="container mx-auto px-4 py-8">
                 <Header theme={theme} setTheme={setTheme} />
                 {/* <h1 className="text-3xl font-bold mb-8 text-center">프롬프트 게시판</h1> */}
-                {posts.length === 0 ? (
+                {loading ? (
+                    <div className="text-center py-10">
+                        <p className="text-lg text-gray-500">게시물을 불러오는 중...</p>
+                    </div>
+                ) : posts.length === 0 ? (
                     <div className="text-center py-10">
                         <p className="text-lg text-gray-500">게시물이 없습니다. 첫 번째 게시물을 업로드해보세요!</p>
                     </div>
                 ) : (
-                    <BoardGrid posts={posts} />
+                    <>
+                        <BoardGrid posts={posts} />
+                        
+                        {/* 페이지네이션 UI */}
+                        {pagination.count > 0 && (
+                            <div className="flex justify-center mt-8">
+                                <div className="join">
+                                    <button 
+                                        className="join-item btn"
+                                        disabled={!pagination.previous}
+                                        onClick={() => handlePageChange(pagination.currentPage - 1)}
+                                    >
+                                        «
+                                    </button>
+                                    <button className="join-item btn">
+                                        페이지 {pagination.currentPage}
+                                    </button>
+                                    <button 
+                                        className="join-item btn"
+                                        disabled={!pagination.next}
+                                        onClick={() => handlePageChange(pagination.currentPage + 1)}
+                                    >
+                                        »
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </div>

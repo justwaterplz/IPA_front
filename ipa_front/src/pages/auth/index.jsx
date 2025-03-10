@@ -113,8 +113,8 @@ const AuthForm = ({ theme, setTheme }) => {
         await register({
           email: formData.email,
           password: formData.password,
-          username: formData.username,
-          profileImage: `https://placehold.co/100x100/9370DB/FFFFFF?text=${formData.username.charAt(0).toUpperCase()}`
+          username: formData.username
+          // profile_image 필드 제거 - 백엔드에서 기본 이미지 사용
         });
         
         // 회원가입 성공 시 로그인 폼으로 전환

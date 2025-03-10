@@ -164,7 +164,9 @@ const postService = {
       throw new Error('로그인이 필요합니다.');
     }
     
+    // 사용자의 기존 게시물 수 확인 코드 제거
     const posts = JSON.parse(localStorage.getItem(COLLECTIONS.POSTS) || '[]');
+    
     const newPost = {
       id: 'post_' + Date.now(),
       userId: auth.currentUser.id,
