@@ -21,9 +21,32 @@ const BoardGrid = ({ posts }) => {
     const [currentPage, setCurrentPage] = useState(1);
     const navigate = useNavigate();
     
+    // 전체 posts 데이터 로깅
+    console.log('전체 게시물 데이터:', posts);
+    
     // 이미지 URL을 전체 URL로 변환하는 함수
-    const getFullImageUrl = (imageUrl) => {
-        if (!imageUrl) return '';
+    const getFullImageUrl = (post) => {
+        // 백엔드 응답 구조 로깅
+        console.log('개별 게시물 데이터:', {
+            id: post.id,
+            title: post.title,
+            content: post.content,
+            image: post.image,
+            tags: post.tags,
+            author: post.author,
+            created_at: post.created_at
+        });
+        
+        // 이미지 필드 확인 (image 또는 image_url)
+        const imageUrl = post.image;
+        
+        if (!imageUrl) {
+            // 이미지가 없는 경우 콘텐츠 기반 더미 이미지 생성
+            const content = post?.content || post?.title || '';
+            const encodedContent = encodeURIComponent(content.trim() || 'image');
+            console.log('이미지 URL이 없음, 더미 이미지 사용:', encodedContent);
+            return `https://source.unsplash.com/300x300/?${encodedContent}`;
+        }
         
         // 이미 완전한 URL인 경우
         if (imageUrl.startsWith('http')) return imageUrl;
@@ -32,6 +55,9 @@ const BoardGrid = ({ posts }) => {
         // 백엔드 URL이 이미 포함되어 있으므로 그대로 반환
         return imageUrl;
     };
+    
+    // 디버깅을 위해 게시물 데이터 로깅
+    console.log('게시물 데이터 (첫 번째 항목):', posts.length > 0 ? posts[0] : 'No posts');
     
     const sortedPosts = [...posts].reverse();
     const indexOfLastPost = currentPage * POSTS_PER_PAGE;
@@ -78,25 +104,28 @@ const BoardGrid = ({ posts }) => {
                             <div className="relative aspect-square overflow-hidden rounded-lg shadow-lg transition-transform duration-300 group-hover:scale-105">
                                 {/* 이미지 */}
                                 <img
-                                    src={getFullImageUrl(post.image)}
-                                    alt={post.prompt}
+                                    src={getFullImageUrl(post)}
+                                    alt={post.content || "게시물 이미지"}
                                     className="w-full h-full object-cover"
                                     onError={(e) => {
                                         console.error('이미지 로드 실패:', post.image);
-                                        e.target.src = '/placeholder-image.jpg'; // 기본 이미지로 대체
+                                        // 콘텐츠 기반 대체 이미지
+                                        const content = post?.content || post?.title || '';
+                                        const encodedContent = encodeURIComponent(content.trim() || 'placeholder');
+                                        e.target.src = `https://source.unsplash.com/300x300/?${encodedContent}`;
                                     }}
                                 />
                                 
                                 {/* 제목을 위한 그라데이션만 항상 표시 */}
                                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
                                     <h3 className="text-white font-semibold truncate">
-                                        {post.prompt}
+                                        {post.content || post.title}
                                     </h3>
                                 </div>
 
                                 {/* 뱃지 영역 변경 - 좌측 상단과 우측 상단으로 분리 */}
                                 {/* New 뱃지 - 좌측 상단으로 이동 */}
-                                {isToday(post.createdAt) && (
+                                {isToday(post.created_at) && (
                                     <div className="absolute top-2 left-2 z-10">
                                         <span className="badge badge-secondary font-bold">NEW</span>
                                     </div>
@@ -111,22 +140,11 @@ const BoardGrid = ({ posts }) => {
                                     </div>
                                 )}
 
-                                {/* 태그 표시 */}
-                                {post.tags && post.tags.length > 0 && (
-                                    <div className="absolute bottom-2 left-2 z-10 flex gap-1">
-                                        {post.tags.map((tag, index) => (
-                                            <span key={index} className="badge badge-sm badge-outline">
-                                                {typeof tag === 'object' ? tag.name : tag}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-
                                 {/* Copy Prompt 버튼 */}
                                 <button
                                     onClick={(e) => {
                                         e.preventDefault();
-                                        handleCopyPrompt(post.prompt);
+                                        handleCopyPrompt(post.content || post.title);
                                     }}
                                     className="absolute bottom-2 right-2 z-10 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center gap-1"
                                 >

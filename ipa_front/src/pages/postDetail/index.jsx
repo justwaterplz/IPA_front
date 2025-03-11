@@ -67,6 +67,9 @@ const PostDetail = () => {
                             : 'https://placehold.co/100x100/9370DB/FFFFFF?text=U',
                         createdAt: foundPost.created_at,
                         updatedAt: foundPost.updated_at,
+                        // 모델 정보 매핑
+                        used_model: foundPost.used_model || null,
+                        model_version: foundPost.model_version || null,
                         tags: Array.isArray(foundPost.tags) 
                             ? foundPost.tags.flatMap(tag => {
                                 // 태그 객체에서 name 속성이 JSON 문자열인 경우
@@ -382,7 +385,7 @@ const PostDetail = () => {
                     </div>
                     
                     {/* 액션 버튼들 */}
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 mt-2" style={{ position: 'relative', left: '-14px' }}>
                         <button 
                             onClick={handleBookmark} 
                             className={`btn btn-ghost btn-sm ${isBookmarked ? 'text-primary' : ''}`}
@@ -401,7 +404,7 @@ const PostDetail = () => {
 
                     {/* 프롬프트 */}
                     <div className="mb-4">
-                        <h3 className="text-sm font-medium mb-2">내용</h3>
+                        <h3 className="text-sm font-medium mb-2">프롬프트</h3>
                         <div className="bg-base-300 p-3 rounded-lg relative group">
                             <p className="text-sm whitespace-pre-wrap pr-8">{post.content}</p>
                             <button 
@@ -425,7 +428,18 @@ const PostDetail = () => {
                                     <span className="font-medium">생성 날짜: </span>
                                     <span>{new Date(post.createdAt).toLocaleString()}</span>
                                 </div>
-                                
+                                {post.used_model && (
+                                    <div>
+                                        <span className="font-medium">사용 모델: </span>
+                                        <span>{post.used_model}</span>
+                                    </div>
+                                )}
+                                {post.model_version && (
+                                    <div>
+                                        <span className="font-medium">모델 버전: </span>
+                                        <span>{post.model_version}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

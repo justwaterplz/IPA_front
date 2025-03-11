@@ -494,7 +494,11 @@ const postService = {
     }
   },
   
-  // 게시물 생성
+  /**
+   * 게시물 생성 함수
+   * @param {Object|FormData} postData - 게시물 데이터 (일반 객체 또는 FormData)
+   * @returns {Promise<Object>} - 생성된 게시물 데이터
+   */
   createPost: async (postData) => {
     try {
       console.log('게시물 생성 요청 데이터:', postData);
@@ -503,53 +507,59 @@ const postService = {
       if (postData instanceof FormData) {
         console.log('FormData 형식으로 게시물 생성 요청');
         // FormData의 모든 항목 로깅
+        console.log('FormData 항목 목록:');
         for (let [key, value] of postData.entries()) {
-          console.log(`FormData 항목: ${key}`, value);
+          if (value instanceof File) {
+            console.log(`FormData 항목: ${key}`, {
+              fileName: value.name,
+              fileType: value.type,
+              fileSize: value.size,
+              lastModified: new Date(value.lastModified).toISOString()
+            });
+          } else {
+            // 문자열 값의 경우 값의 타입과 길이도 함께 로깅
+            console.log(`FormData 항목: ${key}`, value, `(타입: ${typeof value}, 길이: ${value.length})`);
+          }
         }
         
+        // FormData 전송 시 Content-Type 헤더를 설정하지 않음
+        // axios가 자동으로 multipart/form-data와 boundary를 설정하도록 함
         const response = await api.post('/api/posts/', postData, {
           headers: {
-            'Content-Type': 'multipart/form-data'
+            // Content-Type 헤더를 명시적으로 제거
+            'Content-Type': undefined
           }
         });
         
-        console.log('게시물 생성 응답:', response.data);
-        console.log('응답 데이터 구조:', Object.keys(response.data));
-        
-        // 응답에 id가 없으면 게시물 목록에서 찾기
-        if (!response.data.id) {
-          console.log('응답에 id가 없습니다. 응답 데이터:', response.data);
-          const postsResponse = await api.get('/api/posts/');
-          const posts = postsResponse.data.results;
-          const newPost = posts.find(post => 
-            post.title === response.data.title && 
-            post.content === response.data.content
-          );
-          
-          if (newPost) {
-            console.log('게시물 목록에서 새 게시물을 찾았습니다:', newPost);
-            return newPost;
-          } else {
-            console.log('게시물 목록에서 새 게시물을 찾을 수 없습니다.');
-            // 임시 id 생성
-            const tempId = Date.now().toString();
-            console.log('임시 id를 생성합니다:', tempId);
-            return { ...response.data, id: tempId };
-          }
-        }
+        console.log('게시물 생성 성공:', response.status);
+        console.log('게시물 생성 응답 데이터:', response.data);
         
         return response.data;
       } else {
         // 일반 객체인 경우
+        console.log('JSON 형식으로 게시물 생성 요청:', postData);
         const response = await api.post('/api/posts/', postData);
+        console.log('게시물 생성 응답:', response.data);
         return response.data;
       }
     } catch (error) {
       console.error('게시물 생성 중 오류 발생:', error);
-      console.error('응답 데이터:', error.response?.data);
-      console.error('응답 상태:', error.response?.status);
       
-      throw new Error(error.response?.data?.message || error.response?.data?.detail || '게시물 생성 중 오류가 발생했습니다.');
+      if (error.response) {
+        console.error('응답 상태:', error.response.status);
+        console.error('응답 헤더:', error.response.headers);
+        console.error('응답 데이터:', error.response.data);
+        
+        // 오류 응답 데이터 상세 로깅
+        if (error.response.data) {
+          console.error('오류 상세 정보:');
+          for (const [key, value] of Object.entries(error.response.data)) {
+            console.error(`- ${key}:`, value);
+          }
+        }
+      }
+      
+      throw error;
     }
   },
   
@@ -846,6 +856,49 @@ const postService = {
 
 // 파일 업로드 서비스
 const fileService = {
+  // 이미지 파일 업로드 함수 (별도 엔드포인트 사용)
+  uploadImage: async (imageFile) => {
+    try {
+      console.log('이미지 업로드 시작:', imageFile.name, imageFile.type, imageFile.size);
+      
+      // 이미지 파일 검증
+      if (!imageFile.type.startsWith('image/')) {
+        throw new Error('이미지 파일만 업로드할 수 있습니다.');
+      }
+      
+      const formData = new FormData();
+      formData.append('image', imageFile);
+      
+      // 이미지 업로드 엔드포인트 호출
+      // 백엔드에 별도의 이미지 업로드 엔드포인트가 있다고 가정
+      // 없다면 백엔드 개발자와 협의하여 추가해야 함
+      const response = await api.post('/api/images/upload/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      console.log('이미지 업로드 응답:', response.data);
+      
+      // 응답에서 이미지 URL 추출
+      if (response.data && response.data.image_url) {
+        return response.data.image_url;
+      } else {
+        console.error('이미지 업로드 응답에 URL이 없습니다:', response.data);
+        throw new Error('이미지 업로드 후 URL을 받지 못했습니다.');
+      }
+    } catch (error) {
+      console.error('이미지 업로드 중 오류 발생:', error);
+      
+      if (error.response) {
+        console.error('응답 상태:', error.response.status);
+        console.error('응답 데이터:', error.response.data);
+      }
+      
+      throw new Error('이미지 업로드에 실패했습니다: ' + (error.message || '알 수 없는 오류'));
+    }
+  },
+
   // uploadFile 함수는 더 이상 사용하지 않음 - postService.createPost로 통합
   // 하지만 기존 코드와의 호환성을 위해 함수는 유지하고 경고 메시지 출력
   uploadFile: async (file) => {
@@ -901,4 +954,9 @@ const fileService = {
   }
 };
 
-export { userService, postService, fileService }; 
+// 모듈 내보내기
+export {
+  userService,
+  postService,
+  fileService
+}; 

@@ -91,22 +91,41 @@ const Search = () => {
             const apiParams = {};
             
             if (searchData.query) {
-                if (searchData.target === 'prompt') {
-                    apiParams.search = searchData.query;
-                } else if (searchData.target === 'author') {
-                    apiParams.author = searchData.query;
+                // 검색 대상에 따라 적절한 파라미터 설정
+                switch (searchData.target) {
+                    case 'prompt':
+                        // 프롬프트(내용) 검색 - 백엔드 API에 맞는 키 사용
+                        apiParams.search = searchData.query; // 일반 검색 파라미터
+                        break;
+                    case 'author':
+                        // 작성자 검색
+                        apiParams.author__username = searchData.query; // 작성자 이름으로 검색
+                        break;
+                    case 'model':
+                        // 모델 이름 검색
+                        apiParams.used_model = searchData.query; // 모델 이름으로 검색
+                        break;
+                    case 'date':
+                        // 작성일 검색 (YYYY-MM-DD 형식)
+                        apiParams.created_at__date = searchData.query; // 날짜로 검색
+                        break;
+                    default:
+                        // 기본적으로 일반 검색 파라미터 사용
+                        apiParams.search = searchData.query;
                 }
             }
             
             if (searchData.tag) {
-                apiParams.tag = searchData.tag;
+                apiParams.tags__name__icontains = searchData.tag; // 태그 이름으로 검색
             }
             
             if (searchData.page) {
                 apiParams.page = searchData.page;
             }
             
+            console.log('검색 파라미터:', apiParams);
             const response = await postService.searchPosts(apiParams);
+            console.log('검색 결과:', response);
             setSearchResults(response);
             
             setPagination({

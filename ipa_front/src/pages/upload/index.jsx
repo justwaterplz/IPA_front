@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, X, Image as ImageIcon, Plus, Tag } from 'lucide-react';
 import Header from '@/components/layout/header';
@@ -217,42 +217,105 @@ const UploadPage = () => {
 
         try {
             console.log('파일 업로드 및 게시물 생성 시작:', selectedFile);
+            console.log('파일 정보:', {
+                name: selectedFile.name,
+                type: selectedFile.type,
+                size: selectedFile.size,
+                lastModified: new Date(selectedFile.lastModified).toISOString()
+            });
             
             // FormData 직접 생성
             const formData = new FormData();
             
-            // 파일 타입에 따라 적절한 필드 이름 사용
+            // 백엔드 모델에 맞게 'image' 필드에 파일 직접 추가
             if (selectedFile.type.startsWith('image/')) {
-                formData.append('image', selectedFile);
+                // 파일 이름에서 특수문자 제거 (파일명 문제로 인한 오류 방지)
+                const originalFileName = selectedFile.name;
+                const safeFileName = originalFileName.replace(/[^\w\s.-]/g, '');
+                
+                // 파일명에 특수문자가 있으면 새 파일 객체 생성
+                let fileToUpload = selectedFile;
+                if (safeFileName !== originalFileName) {
+                    console.log('파일명에 특수문자가 있어 안전한 파일명으로 변경합니다.');
+                    console.log('원본 파일명:', originalFileName);
+                    console.log('안전한 파일명:', safeFileName);
+                    
+                    // 새 파일 객체 생성 (파일명만 변경)
+                    fileToUpload = new File(
+                        [selectedFile], 
+                        safeFileName, 
+                        { type: selectedFile.type }
+                    );
+                }
+                
+                // 파일 객체 전송 - Content-Type을 설정하지 않고 FormData가 자동으로 처리하도록 함
+                formData.append('image', fileToUpload);
+                console.log('이미지 파일 추가:', fileToUpload.name, fileToUpload.type, fileToUpload.size);
+                
+                // FormData에 파일이 제대로 추가되었는지 확인
+                const imageEntry = formData.get('image');
+                if (imageEntry instanceof File) {
+                    console.log('FormData에 파일이 정상적으로 추가됨:', 
+                        imageEntry.name, 
+                        imageEntry.type, 
+                        imageEntry.size
+                    );
+                } else {
+                    console.error('FormData에 파일이 아닌 데이터가 추가됨:', imageEntry);
+                }
             } else {
                 formData.append('file', selectedFile);
+                console.log('일반 파일 추가:', selectedFile.name);
             }
             
-            // 게시물 정보 추가
+            // 게시물 정보 추가 - 문자열 형태로 추가
             formData.append('title', prompt.substring(0, 100)); // 프롬프트의 첫 100자를 제목으로 사용
             formData.append('content', prompt);
-            formData.append('model', selectedModel);
-            formData.append('model_version', selectedVersion);
             
-            // 태그 추가 (백엔드에서 지원하는 형식으로)
+            // AI 모델 정보 추가 - 백엔드 요구사항에 맞게 필드명 수정
+            if (selectedModel) {
+                formData.append('used_model', selectedModel);
+                console.log('AI 모델 추가:', selectedModel);
+            }
+            
+            if (selectedVersion) {
+                formData.append('model_version', selectedVersion);
+                console.log('모델 버전 추가:', selectedVersion);
+            }
+            
+            // 태그 추가 - 백엔드 API 형식에 맞게 수정
             if (tags && tags.length > 0) {
-                // 백엔드가 JSON 문자열을 받는 경우
-                formData.append('tag_names', JSON.stringify(tags));
+                // 백엔드는 아이템 리스트(배열)를 기대함
+                // 각 태그를 개별 항목으로 전송
+                tags.forEach(tag => {
+                    formData.append('tag_names', tag);
+                });
                 
-                // 또는 백엔드가 쉼표로 구분된 문자열을 받는 경우
-                // formData.append('tag_names', tags.join(','));
-                
-                // 또는 백엔드가 여러 필드를 받는 경우
-                // tags.forEach(tag => formData.append('tag_names', tag));
+                console.log('태그 추가 (개별 항목):', tags);
             }
             
             console.log('게시물 생성 요청 데이터:', {
                 title: prompt.substring(0, 100),
                 content: prompt,
-                model: selectedModel,
+                used_model: selectedModel,
                 model_version: selectedVersion,
-                tags: tags
+                tags: tags,
+                image: selectedFile ? selectedFile.name : null
             });
+            
+            // FormData 내용 로깅
+            console.log('FormData 내용:');
+            for (let [key, value] of formData.entries()) {
+                if (value instanceof File) {
+                    console.log(`- ${key}: File: ${value.name} (${value.type}, ${value.size} bytes)`);
+                } else {
+                    console.log(`- ${key}: ${value}`);
+                }
+            }
+            
+            // multipart/form-data 형식으로 요청 전송
+            console.log('multipart/form-data 형식으로 요청을 전송합니다.');
+            console.log('Content-Type 헤더는 axios가 자동으로 설정하도록 합니다.');
             
             // 파일 업로드와 게시물 생성을 한 번에 처리
             const response = await postService.createPost(formData);
@@ -275,16 +338,6 @@ const UploadPage = () => {
         } finally {
             setIsUploading(false);
         }
-    };
-
-    // 파일을 Base64로 변환하는 함수
-    const convertFileToBase64 = (file) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = (error) => reject(error);
-            reader.readAsDataURL(file);
-        });
     };
 
     // 이미지 크기 줄이기 함수 추가
