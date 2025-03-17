@@ -697,6 +697,24 @@ const userService = {
       
       throw new Error(error.response?.data?.message || error.response?.data?.detail || '프로필 이미지 업로드 중 오류가 발생했습니다.');
     }
+  },
+
+  /**
+   * 사용자 정보 조회 함수
+   * @param {string} userId - 사용자 ID
+   * @returns {Promise<Object>} - 사용자 정보 객체
+   */
+  getUserInfo: async (userId) => {
+    console.log('사용자 정보 조회 요청:', userId);
+    try {
+      // getUserById 함수를 호출하여 사용자 정보 가져오기
+      const userData = await userService.getUserById(userId);
+      console.log('사용자 정보 조회 성공:', userData);
+      return userData;
+    } catch (error) {
+      console.error('사용자 정보 조회 실패:', error);
+      throw error;
+    }
   }
 };
 

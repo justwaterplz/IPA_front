@@ -3,10 +3,11 @@ import { useAuth } from '@/pages/auth/components/AuthContext';
 import { userService } from '@/utils/apiService';
 import { Loader, User, Mail, Edit, Save, X, AlertCircle, Shield, CheckCircle, Clock, XCircle, Crown, Star, Camera, Lock, Key, KeyRound, AlertTriangle } from 'lucide-react';
 import ProfileImageModal from './components/ProfileImageModal';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const Settings = () => {
-    const { user, updateUser } = useAuth();
+    const { user, updateUser, updatePermissionStatus } = useAuth();
+    const navigate = useNavigate();
     const [isEditing, setIsEditing] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -59,15 +60,17 @@ const Settings = () => {
                     : `${user.profile_image}?t=${timestamp}`;
                 
                 // 로컬 스토리지에 최신 프로필 이미지 URL 저장
-                localStorage.setItem('last_profile_image', imageWithTimestamp);
+                const storageKey = `profile_image_${user.id}`;
+                localStorage.setItem(storageKey, imageWithTimestamp);
                 
                 setProfileImage(imageWithTimestamp);
-                console.log('사용자 프로필 이미지 업데이트:', imageWithTimestamp);
+                console.log('사용자 프로필 이미지 업데이트:', imageWithTimestamp, '키:', storageKey);
             } else {
                 // 로컬 스토리지에서 마지막으로 저장된 프로필 이미지 확인
-                const lastProfileImage = localStorage.getItem('last_profile_image');
+                const storageKey = user?.id ? `profile_image_${user.id}` : null;
+                const lastProfileImage = storageKey ? localStorage.getItem(storageKey) : null;
                 if (lastProfileImage) {
-                    console.log('로컬 스토리지에서 프로필 이미지 복원:', lastProfileImage);
+                    console.log('로컬 스토리지에서 프로필 이미지 복원:', lastProfileImage, '키:', storageKey);
                     setProfileImage(lastProfileImage);
                 } else {
                     setProfileImage(null);
@@ -92,25 +95,85 @@ const Settings = () => {
                 newStatus = 'superuser';
             } else if (user.is_admin || user.is_staff || user.role === 'admin') {
                 newStatus = 'admin';
+            } else if (user.status === 'approved') {
+                // status가 approved일 때 명시적으로 처리
+                newStatus = 'approved';
+            } else if (user.user_status === 'approved') {
+                // user_status가 approved일 때 명시적으로 처리
+                newStatus = 'approved';
+            } else if (user.role === 'user') {
+                // role이 user인 경우 approved로 처리
+                newStatus = 'approved';
             } else if (user.status && user.status !== 'not_requested') {
-                // status가 not_requested가 아닐 때만 적용
+                // 그 외 status 값 적용
                 newStatus = user.status;
             } else if (user.user_status && user.user_status !== 'not_requested') {
-                // user_status가 not_requested가 아닐 때만 적용
+                // 그 외 user_status 값 적용
                 newStatus = user.user_status;
-            } else if (user.role === 'user') {
-                newStatus = 'approved';
             }
             
-            console.log('설정할 사용자 상태:', newStatus);
+            console.log('설정할 사용자 상태:', newStatus, '원본 데이터:', {
+                status: user.status,
+                user_status: user.user_status,
+                role: user.role,
+                is_admin: user.is_admin,
+                is_superuser: user.is_superuser
+            });
+            
+            // 로컬 상태 업데이트
             setUserStatus(newStatus);
+            
+            // AuthContext의 권한 상태와 다른 경우 동기화
+            if (newStatus !== user.status && newStatus !== user.user_status) {
+                console.log('AuthContext 권한 상태 동기화 필요:', { 현재: user.status, 새상태: newStatus });
+                updatePermissionStatus(newStatus);
+            }
             
             // 상태가 설정된 후 확인
             setTimeout(() => {
                 console.log('설정 후 사용자 상태:', userStatus);
             }, 100);
+            
+            // 페이지 로드 시 사용자 정보 새로고침
+            const fetchUserInfo = async () => {
+                try {
+                    const refreshedUser = await userService.getUserInfo(user.id);
+                    console.log('새로고침된 사용자 정보:', refreshedUser);
+                    
+                    // 권한 상태 확인
+                    let refreshedStatus = 'not_requested';
+                    
+                    if (refreshedUser.is_superuser || refreshedUser.user_status === 'superuser') {
+                        refreshedStatus = 'superuser';
+                    } else if (refreshedUser.is_admin || refreshedUser.is_staff || refreshedUser.role === 'admin') {
+                        refreshedStatus = 'admin';
+                    } else if (refreshedUser.status === 'approved') {
+                        refreshedStatus = 'approved';
+                    } else if (refreshedUser.user_status === 'approved') {
+                        refreshedStatus = 'approved';
+                    } else if (refreshedUser.role === 'user') {
+                        refreshedStatus = 'approved';
+                    } else if (refreshedUser.status && refreshedUser.status !== 'not_requested') {
+                        refreshedStatus = refreshedUser.status;
+                    } else if (refreshedUser.user_status && refreshedUser.user_status !== 'not_requested') {
+                        refreshedStatus = refreshedUser.user_status;
+                    }
+                    
+                    console.log('새로고침 후 상태:', refreshedStatus);
+                    
+                    // 상태 업데이트
+                    setUserStatus(refreshedStatus);
+                    
+                    // AuthContext 업데이트
+                    await updatePermissionStatus(refreshedStatus);
+                } catch (error) {
+                    console.error('사용자 정보 새로고침 중 오류:', error);
+                }
+            };
+            
+            fetchUserInfo();
         }
-    }, [user]);
+    }, [user, updatePermissionStatus]);
 
     // 폼 데이터 변경 핸들러
     const handleChange = (e) => {
@@ -264,14 +327,30 @@ const Settings = () => {
             }
 
             // 권한 신청 API 호출
-            await userService.requestApproval({
+            const response = await userService.requestApproval({
                 name: formData.requestName,
                 department: formData.requestDepartment,
                 note: formData.requestNote
             });
             
+            console.log('권한 신청 응답:', response);
+            
+            // 응답에서 상태 정보 확인
+            let newStatus = 'pending';
+            if (response && response.status) {
+                newStatus = response.status;
+                console.log('서버에서 받은 새 상태:', response.status);
+            } else {
+                console.log('서버 응답에 상태 정보가 없어 pending으로 설정');
+            }
+            
+            // 로컬 상태 업데이트
+            setUserStatus(newStatus);
+            
+            // AuthContext의 권한 상태도 업데이트
+            await updatePermissionStatus(newStatus);
+            
             setSuccess('권한 신청이 성공적으로 전송되었습니다. 관리자 승인을 기다려주세요.');
-            setUserStatus('pending'); // 상태 업데이트
         } catch (error) {
             setError(error.message || '권한 신청 중 오류가 발생했습니다.');
         } finally {
@@ -388,13 +467,79 @@ const Settings = () => {
             : `${imageUrl}?t=${timestamp}`;
         
         // 로컬 스토리지에 최신 프로필 이미지 URL 저장
-        localStorage.setItem('last_profile_image', imageWithTimestamp);
+        const storageKey = `profile_image_${user.id}`;
+        localStorage.setItem(storageKey, imageWithTimestamp);
         
         setProfileImage(imageWithTimestamp);
         
         // 사용자 객체 업데이트는 제거 - 이미 API에서 처리됨
         
         setSuccess('프로필 이미지가 성공적으로 업데이트되었습니다.');
+    };
+
+    // 사용자 정보 새로고침 함수
+    const refreshUserInfo = async () => {
+        try {
+            setIsLoading(true);
+            // 사용자 정보 다시 가져오기
+            const refreshedUser = await userService.getUserInfo(user.id);
+            console.log('새로고침된 사용자 정보:', refreshedUser);
+            
+            // 권한 상태 확인
+            let newStatus = 'not_requested';
+            
+            if (refreshedUser.is_superuser || refreshedUser.user_status === 'superuser') {
+                newStatus = 'superuser';
+            } else if (refreshedUser.is_admin || refreshedUser.is_staff || refreshedUser.role === 'admin') {
+                newStatus = 'admin';
+            } else if (refreshedUser.status === 'approved') {
+                newStatus = 'approved';
+            } else if (refreshedUser.user_status === 'approved') {
+                newStatus = 'approved';
+            } else if (refreshedUser.role === 'user') {
+                newStatus = 'approved';
+            } else if (refreshedUser.status && refreshedUser.status !== 'not_requested') {
+                newStatus = refreshedUser.status;
+            } else if (refreshedUser.user_status && refreshedUser.user_status !== 'not_requested') {
+                newStatus = refreshedUser.user_status;
+            }
+            
+            console.log('새로고침 후 상태:', newStatus);
+            
+            // 상태 업데이트
+            setUserStatus(newStatus);
+            
+            // AuthContext 업데이트
+            await updatePermissionStatus(newStatus);
+            
+            setSuccess('사용자 정보가 새로고침되었습니다.');
+            
+            return newStatus;
+        } catch (error) {
+            console.error('사용자 정보 새로고침 중 오류:', error);
+            setError('사용자 정보 새로고침 중 오류가 발생했습니다.');
+            return null;
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // 메인 페이지로 이동하는 함수
+    const handleNavigateToMain = async () => {
+        console.log('메인 페이지로 이동 시도');
+        
+        try {
+            // 사용자 상태 강제 업데이트
+            setUserStatus('approved');
+            await updatePermissionStatus('approved');
+            
+            // 메인 페이지로 이동
+            navigate('/');
+        } catch (error) {
+            console.error('메인 페이지 이동 중 오류:', error);
+            // 오류가 발생해도 메인 페이지로 이동 시도
+            navigate('/');
+        }
     };
 
     return (
@@ -753,7 +898,23 @@ const Settings = () => {
                 {userStatus === 'approved' && (
                     <div className="alert alert-success">
                         <CheckCircle className="h-5 w-5" />
-                        <span>권한이 승인되었습니다. 추가 기능을 사용할 수 있습니다.</span>
+                        <div className="flex flex-col">
+                            <span>권한이 승인되었습니다. 추가 기능을 사용할 수 있습니다.</span>
+                            <div className="mt-2 flex gap-2">
+                                <button 
+                                    className="btn btn-primary"
+                                    onClick={handleNavigateToMain}
+                                >
+                                    메인 페이지로 이동
+                                </button>
+                                <button 
+                                    className="btn btn-outline"
+                                    onClick={refreshUserInfo}
+                                >
+                                    상태 새로고침
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
                 

@@ -36,6 +36,19 @@ export const AuthProvider = ({ children }) => {
                 setUser(authData.currentUser);
                 setIsAuthenticated(true);
                 
+                // 프로필 이미지가 있으면 로컬 스토리지에 저장
+                if (authData.currentUser.profile_image) {
+                    const timestamp = new Date().getTime();
+                    const imageWithTimestamp = authData.currentUser.profile_image.includes('?') 
+                        ? `${authData.currentUser.profile_image}&t=${timestamp}` 
+                        : `${authData.currentUser.profile_image}?t=${timestamp}`;
+                    
+                    // 사용자 ID를 포함한 고유 키 사용
+                    const storageKey = `profile_image_${authData.currentUser.id}`;
+                    localStorage.setItem(storageKey, imageWithTimestamp);
+                    console.log('토큰 검증 시 프로필 이미지 저장:', imageWithTimestamp, '키:', storageKey);
+                }
+                
                 // 사용자 권한 설정 - is_admin, is_superuser 필드도 확인
                 if (authData.currentUser.role === 'admin' || authData.currentUser.is_admin || authData.currentUser.is_superuser) {
                     setUserRole(USER_ROLES.ADMIN);
@@ -123,6 +136,19 @@ export const AuthProvider = ({ children }) => {
             
             setIsAuthenticated(true);
             setUser(userData);
+            
+            // 프로필 이미지가 있으면 로컬 스토리지에 저장
+            if (userData.profile_image) {
+                const timestamp = new Date().getTime();
+                const imageWithTimestamp = userData.profile_image.includes('?') 
+                    ? `${userData.profile_image}&t=${timestamp}` 
+                    : `${userData.profile_image}?t=${timestamp}`;
+                
+                // 사용자 ID를 포함한 고유 키 사용
+                const storageKey = `profile_image_${userData.id}`;
+                localStorage.setItem(storageKey, imageWithTimestamp);
+                console.log('로그인 시 프로필 이미지 저장:', imageWithTimestamp, '키:', storageKey);
+            }
             
             // 사용자 권한 설정
             if (userData.role === 'admin' || userData.is_admin || userData.is_superuser) {
@@ -227,19 +253,36 @@ export const AuthProvider = ({ children }) => {
     // 권한 상태 업데이트 함수
     const updatePermissionStatus = async (status) => {
         try {
+            console.log('권한 상태 업데이트 시작:', { 현재상태: permissionStatus, 새상태: status });
+            
             setPermissionStatus(status);
             
+            // 권한 상태에 따라 사용자 역할 업데이트
             if (status === PERMISSION_STATUS.APPROVED) {
                 setUserRole(USER_ROLES.USER);
+                console.log('사용자 역할 업데이트: USER');
+            } else if (status === PERMISSION_STATUS.PENDING) {
+                setUserRole(USER_ROLES.PENDING);
+                console.log('사용자 역할 업데이트: PENDING');
+            } else if (status === PERMISSION_STATUS.REJECTED) {
+                setUserRole(USER_ROLES.PENDING);
+                console.log('사용자 역할 업데이트: PENDING (거부됨)');
             } else {
                 setUserRole(USER_ROLES.PENDING);
+                console.log('사용자 역할 업데이트: PENDING (기본값)');
             }
             
             // 사용자 객체에도 권한 상태 업데이트
-            setUser(prevUser => ({
-                ...prevUser,
-                permissionStatus: status
-            }));
+            setUser(prevUser => {
+                const updatedUser = {
+                    ...prevUser,
+                    status: status,
+                    user_status: status,
+                    permissionStatus: status
+                };
+                console.log('업데이트된 사용자 객체:', updatedUser);
+                return updatedUser;
+            });
             
             return status;
         } catch (error) {

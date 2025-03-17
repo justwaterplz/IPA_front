@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Lock, User } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from './components/AuthContext';
+import { useAuth, USER_ROLES, PERMISSION_STATUS } from './components/AuthContext';
 
 const AuthForm = ({ theme, setTheme }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, register, isAuthenticated } = useAuth();
+  const { login, register, isAuthenticated, userRole, permissionStatus } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   
@@ -34,10 +34,18 @@ const AuthForm = ({ theme, setTheme }) => {
   // 이미 로그인한 경우 리다이렉트
   useEffect(() => {
     if (isAuthenticated) {
-      const from = location.state?.from || '/';
-      navigate(from, { replace: true });
+      // 권한이 수락된 사용자는 메인 페이지로 리다이렉트
+      if (userRole === USER_ROLES.USER || userRole === USER_ROLES.ADMIN || 
+          permissionStatus === PERMISSION_STATUS.APPROVED) {
+        console.log('권한이 수락된 사용자: 메인 페이지로 리다이렉트');
+        navigate('/', { replace: true });
+      } else {
+        // 권한이 수락되지 않은 사용자는 설정 페이지로 리다이렉트
+        console.log('권한이 수락되지 않은 사용자: 설정 페이지로 리다이렉트');
+        navigate('/settings', { replace: true });
+      }
     }
-  }, [isAuthenticated, navigate, location]);
+  }, [isAuthenticated, userRole, permissionStatus, navigate]);
   
   const handleChange = (e) => {
     const { name, value } = e.target;

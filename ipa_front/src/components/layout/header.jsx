@@ -80,11 +80,15 @@ const Header = ({ theme, setTheme }) => {
                                 <div className="dropdown dropdown-end relative">
                                     <div tabIndex={0} role="button" className="btn btn-ghost btn-circle avatar">
                                         <div className="w-10 rounded-full">
-                                            {user?.profileImage ? (
+                                            {user?.profile_image || user?.profileImage ? (
                                                 <img 
                                                     alt="user profile" 
-                                                    src={user.profileImage} 
+                                                    src={user.profile_image || user.profileImage || (user?.id ? localStorage.getItem(`profile_image_${user.id}`) : null)} 
                                                     className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                        e.target.onerror = null;
+                                                        e.target.src = `https://placehold.co/200x200/9370DB/FFFFFF?text=${user?.username?.charAt(0) || 'U'}`;
+                                                    }}
                                                 />
                                             ) : (
                                                 <div className="bg-indigo-200 w-full h-full grid place-items-center rounded-full">
