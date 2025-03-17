@@ -41,6 +41,8 @@ const Settings = () => {
     // 사용자 정보 초기화
     useEffect(() => {
         if (user) {
+            console.log('사용자 정보:', user);
+            
             setFormData(prev => ({
                 ...prev,
                 username: user.username || '',
@@ -51,31 +53,41 @@ const Settings = () => {
             // 프로필 이미지 설정
             setProfileImage(user.profile_image || null);
             
-            // 사용자 권한 상태 가져오기 (백엔드 API 호출 필요)
-            const fetchUserStatus = async () => {
-                try {
-                    // 실제 구현 시 API 호출로 대체
-                    // const response = await userService.getUserById(user.id);
-                    // setUserStatus(response.user_status);
-                    
-                    // 임시 구현: 사용자 역할에 따라 상태 설정
-                    if (user.is_superuser) {
-                        setUserStatus('superuser');
-                    } else if (user.is_admin) {
-                        setUserStatus('admin');
-                    } else if (user.status) {
-                        setUserStatus(user.status);
-                    } else if (user.user_status) {
-                        setUserStatus(user.user_status);
-                    }
-                    
-                    console.log('사용자 상태:', userStatus);
-                } catch (error) {
-                    console.error('사용자 권한 상태 조회 중 오류:', error);
-                }
-            };
+            // 사용자 권한 상태 즉시 설정 (비동기 함수 없이)
+            // 디버깅을 위한 로그
+            console.log('사용자 권한 정보:', {
+                is_superuser: user.is_superuser,
+                is_admin: user.is_admin,
+                is_staff: user.is_staff,
+                role: user.role,
+                status: user.status,
+                user_status: user.user_status
+            });
             
-            fetchUserStatus();
+            // 권한 설정 우선순위 변경
+            let newStatus = 'not_requested';
+            
+            if (user.is_superuser || user.user_status === 'superuser') {
+                newStatus = 'superuser';
+            } else if (user.is_admin || user.is_staff || user.role === 'admin') {
+                newStatus = 'admin';
+            } else if (user.status && user.status !== 'not_requested') {
+                // status가 not_requested가 아닐 때만 적용
+                newStatus = user.status;
+            } else if (user.user_status && user.user_status !== 'not_requested') {
+                // user_status가 not_requested가 아닐 때만 적용
+                newStatus = user.user_status;
+            } else if (user.role === 'user') {
+                newStatus = 'approved';
+            }
+            
+            console.log('설정할 사용자 상태:', newStatus);
+            setUserStatus(newStatus);
+            
+            // 상태가 설정된 후 확인
+            setTimeout(() => {
+                console.log('설정 후 사용자 상태:', userStatus);
+            }, 100);
         }
     }, [user]);
 
@@ -224,6 +236,11 @@ const Settings = () => {
             if (!formData.requestName.trim()) {
                 throw new Error('이름을 입력해주세요.');
             }
+            
+            // 메시지(note) 필드 검증 추가
+            if (!formData.requestNote.trim()) {
+                throw new Error('신청 사유를 입력해주세요. 이 필드는 필수입니다.');
+            }
 
             // 권한 신청 API 호출
             await userService.requestApproval({
@@ -334,6 +351,11 @@ const Settings = () => {
     return (
         <div className="container mx-auto px-4 py-8">
             <h1 className="text-2xl font-bold mb-6">설정</h1>
+            
+            {/* 디버깅 정보 */}
+            <div className="mb-4 text-sm text-gray-500">
+                현재 사용자 상태: {userStatus}
+            </div>
             
             {/* 관리자 패널 링크 */}
             {isAdmin && (

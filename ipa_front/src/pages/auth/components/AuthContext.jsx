@@ -36,13 +36,15 @@ export const AuthProvider = ({ children }) => {
                 setUser(authData.currentUser);
                 setIsAuthenticated(true);
                 
-                // 사용자 권한 설정
-                if (authData.currentUser.role === 'admin') {
+                // 사용자 권한 설정 - is_admin, is_superuser 필드도 확인
+                if (authData.currentUser.role === 'admin' || authData.currentUser.is_admin || authData.currentUser.is_superuser) {
                     setUserRole(USER_ROLES.ADMIN);
                     setPermissionStatus(PERMISSION_STATUS.APPROVED);
+                    console.log('관리자 권한 설정됨:', USER_ROLES.ADMIN);
                 } else if (authData.currentUser.role === 'user') {
                     setUserRole(USER_ROLES.USER);
                     setPermissionStatus(PERMISSION_STATUS.APPROVED);
+                    console.log('일반 사용자 권한 설정됨:', USER_ROLES.USER);
                 } else {
                     // 권한 상태 설정 (백엔드에서 받아와야 함)
                     const permStatus = authData.currentUser.permissionStatus || PERMISSION_STATUS.NOT_REQUESTED;
@@ -50,8 +52,10 @@ export const AuthProvider = ({ children }) => {
                     
                     if (permStatus === PERMISSION_STATUS.APPROVED) {
                         setUserRole(USER_ROLES.USER);
+                        console.log('승인된 사용자 권한 설정됨:', USER_ROLES.USER);
                     } else {
                         setUserRole(USER_ROLES.PENDING);
+                        console.log('대기 중인 사용자 권한 설정됨:', USER_ROLES.PENDING);
                     }
                 }
                 return true;
@@ -121,12 +125,14 @@ export const AuthProvider = ({ children }) => {
             setUser(userData);
             
             // 사용자 권한 설정
-            if (userData.role === 'admin') {
+            if (userData.role === 'admin' || userData.is_admin || userData.is_superuser) {
                 setUserRole(USER_ROLES.ADMIN);
                 setPermissionStatus(PERMISSION_STATUS.APPROVED);
+                console.log('관리자 권한 설정됨:', USER_ROLES.ADMIN);
             } else if (userData.role === 'user') {
                 setUserRole(USER_ROLES.USER);
                 setPermissionStatus(PERMISSION_STATUS.APPROVED);
+                console.log('일반 사용자 권한 설정됨:', USER_ROLES.USER);
             } else {
                 // 권한 상태 설정 (백엔드에서 받아와야 함)
                 const permStatus = userData.permissionStatus || PERMISSION_STATUS.NOT_REQUESTED;
@@ -134,8 +140,10 @@ export const AuthProvider = ({ children }) => {
                 
                 if (permStatus === PERMISSION_STATUS.APPROVED) {
                     setUserRole(USER_ROLES.USER);
+                    console.log('승인된 사용자 권한 설정됨:', USER_ROLES.USER);
                 } else {
                     setUserRole(USER_ROLES.PENDING);
+                    console.log('대기 중인 사용자 권한 설정됨:', USER_ROLES.PENDING);
                 }
             }
             

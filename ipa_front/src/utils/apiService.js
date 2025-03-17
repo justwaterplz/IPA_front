@@ -245,7 +245,7 @@ const userService = {
       
       // JWT 토큰 발급 요청
       const response = await api.post('/api/token/', { 
-        username: email, // Django의 기본 JWT 인증은 username을 사용
+        email: email, // 이메일 필드로 변경
         password 
       });
       
@@ -479,8 +479,9 @@ const userService = {
       
       // 실제 API 호출 - 백엔드 엔드포인트 업데이트
       const response = await api.post('/api/users/permission-request/', {
-        ...requestData,
-        requestType: 'permission_request'
+        message: requestData.note, // note 필드를 message 필드로 변경
+        name: requestData.name,
+        department: requestData.department
       });
       
       console.log('권한 신청 응답:', response.data);
@@ -676,7 +677,7 @@ const userService = {
       }
       
       // 백엔드 API 명세에 맞게 프로필 이미지 업로드 엔드포인트 사용
-      console.log('프로필 이미지 업로드 엔드포인트로 이미지 업로드 시도');
+      console.log('프로필 이미지 업로드 엔드포인트로 POST 요청 시도');
       const response = await api.post(`/api/users/${userId}/profile-image/`, formData, config);
       console.log('프로필 이미지 업로드 성공:', response.data);
       return response.data;
