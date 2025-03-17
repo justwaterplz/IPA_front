@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { X, Upload, Image as ImageIcon, Crop as CropIcon, Check, Loader, ArrowLeft } from 'lucide-react';
+import { X, Upload, Image as ImageIcon, Crop as CropIcon, Check, Loader, ArrowLeft, CheckCircle } from 'lucide-react';
 import { userService } from '@/utils/apiService';
 import Cropper from 'react-easy-crop';
 import { useAuth } from '@/pages/auth/components/AuthContext';
@@ -22,6 +22,9 @@ const ProfileImageModal = ({ isOpen, onClose, onImageUpdate, currentImage }) => 
     // 크롭 영역 크기 계산 (반응형)
     const [cropSize, setCropSize] = useState({ width: 200, height: 200 });
     const cropperRef = useRef(null);
+
+    // 성공 메시지 상태 추가
+    const [successMessage, setSuccessMessage] = useState('');
 
     // 모달이 닫힐 때 상태 초기화
     const handleClose = () => {
@@ -159,26 +162,55 @@ const ProfileImageModal = ({ isOpen, onClose, onImageUpdate, currentImage }) => 
 
     // 이미지 업로드 핸들러
     const handleUpload = async () => {
-        if (!selectedFile || !user?.id) return;
-
+        if (!previewUrl) {
+            console.error('업로드할 이미지가 없습니다.');
+            return;
+        }
+        
         setIsUploading(true);
-        setUploadStep('uploading');
         setUploadError(null);
-
+        
         try {
+            console.log('이미지 업로드 요청 시작:', user.id);
+            
+            // Blob URL에서 파일 객체 생성
+            const response = await fetch(previewUrl);
+            const blob = await response.blob();
+            
+            // 파일 이름 생성 (현재 시간 기반)
+            const fileName = `profile_${Date.now()}.${blob.type.split('/')[1] || 'png'}`;
+            const file = new File([blob], fileName, { type: blob.type });
+            
             // FormData 생성
             const formData = new FormData();
-            formData.append('image', selectedFile);
-
-            // API 호출 - 사용자 ID 전달
-            const response = await userService.updateProfileImage(formData, user.id);
-
-            // 성공 시 부모 컴포넌트에 알림
-            onImageUpdate(response.profile_image || previewUrl);
-            handleClose();
+            formData.append('profile_image', file);
+            
+            // 이미지 업로드 API 호출
+            const response2 = await userService.updateProfileImage(formData, user.id);
+            console.log('이미지 업로드 응답:', response2);
+            
+            // 응답에서 이미지 URL 추출
+            if (!response2.profile_image && !response2.image_url) {
+                console.warn('서버 응답에 이미지 URL이 없습니다. 응답:', response2);
+                // 서버에서 URL을 반환하지 않았지만 업로드는 성공한 경우
+                onImageUpdate('success');
+                setUploadStep('success');
+                setIsUploading(false);
+                return;
+            }
+            
+            const imageUrl = response2.profile_image || response2.image_url;
+            console.log('사용할 이미지 URL:', imageUrl);
+            
+            // 부모 컴포넌트에 이미지 URL 전달
+            onImageUpdate(imageUrl);
+            
+            // 성공 상태로 변경
+            setUploadStep('success');
+            setSuccessMessage('프로필 이미지가 성공적으로 업로드되었습니다.');
         } catch (error) {
+            console.error('이미지 업로드 중 오류 발생:', error);
             setUploadError(error.message || '이미지 업로드 중 오류가 발생했습니다.');
-            setUploadStep('preview');
         } finally {
             setIsUploading(false);
         }
@@ -242,7 +274,7 @@ const ProfileImageModal = ({ isOpen, onClose, onImageUpdate, currentImage }) => 
                                                     className="w-full h-full object-cover"
                                                     onError={(e) => {
                                                         e.target.onerror = null;
-                                                        e.target.src = 'https://via.placeholder.com/150?text=User';
+                                                        e.target.src = 'https://placehold.co/150?text=User';
                                                     }}
                                                 />
                                             </div>
@@ -346,6 +378,10 @@ const ProfileImageModal = ({ isOpen, onClose, onImageUpdate, currentImage }) => 
                                                 src={previewUrl} 
                                                 alt="이미지 미리보기" 
                                                 className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                    e.target.onerror = null;
+                                                    e.target.src = 'https://placehold.co/200x200/9370DB/FFFFFF?text=Preview';
+                                                }}
                                             />
                                         </div>
                                     </div>
@@ -375,6 +411,34 @@ const ProfileImageModal = ({ isOpen, onClose, onImageUpdate, currentImage }) => 
                             <div className="flex flex-col items-center py-8">
                                 <Loader className="h-12 w-12 animate-spin text-primary mb-4" />
                                 <p className="text-center">이미지를 업로드하는 중입니다...</p>
+                            </div>
+                        )}
+                        
+                        {/* 성공 메시지 표시 */}
+                        {uploadStep === 'success' && (
+                            <div className="text-center">
+                                <div className="mb-4 text-green-600">
+                                    <CheckCircle className="h-12 w-12 mx-auto" />
+                                </div>
+                                <h3 className="text-lg font-medium text-gray-900 mb-2">업로드 성공!</h3>
+                                <p className="text-gray-600 mb-4">{successMessage}</p>
+                                
+                                <div className="flex justify-center space-x-4">
+                                    <button
+                                        type="button"
+                                        className="inline-flex justify-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500"
+                                        onClick={onClose}
+                                    >
+                                        닫기
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="inline-flex justify-center px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-100 border border-transparent rounded-md hover:bg-indigo-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500"
+                                        onClick={() => window.location.reload()}
+                                    >
+                                        새로고침
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>

@@ -481,7 +481,8 @@ const userService = {
       const response = await api.post('/api/users/permission-request/', {
         message: requestData.note, // note 필드를 message 필드로 변경
         name: requestData.name,
-        department: requestData.department
+        department: requestData.department,
+        request_type: 'permission_request' // 'user'에서 'permission_request'로 변경 - 백엔드에서 허용하는 값
       });
       
       console.log('권한 신청 응답:', response.data);
@@ -658,11 +659,10 @@ const userService = {
         throw new Error('사용자 정보가 없습니다.');
       }
       
-      // multipart/form-data를 사용할 때는 Content-Type을 명시적으로 설정하지 않음
-      // Axios가 자동으로 boundary 값을 포함한 Content-Type을 설정하도록 함
+      // Content-Type을 명시적으로 설정
       const config = {
         headers: {
-          // 'Content-Type': 'multipart/form-data' 제거
+          'Content-Type': 'multipart/form-data'
         }
       };
       

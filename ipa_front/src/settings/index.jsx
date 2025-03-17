@@ -51,7 +51,28 @@ const Settings = () => {
             }));
             
             // 프로필 이미지 설정
-            setProfileImage(user.profile_image || null);
+            if (user.profile_image) {
+                // 캐시 방지를 위해 타임스탬프 추가
+                const timestamp = new Date().getTime();
+                const imageWithTimestamp = user.profile_image.includes('?') 
+                    ? `${user.profile_image}&t=${timestamp}` 
+                    : `${user.profile_image}?t=${timestamp}`;
+                
+                // 로컬 스토리지에 최신 프로필 이미지 URL 저장
+                localStorage.setItem('last_profile_image', imageWithTimestamp);
+                
+                setProfileImage(imageWithTimestamp);
+                console.log('사용자 프로필 이미지 업데이트:', imageWithTimestamp);
+            } else {
+                // 로컬 스토리지에서 마지막으로 저장된 프로필 이미지 확인
+                const lastProfileImage = localStorage.getItem('last_profile_image');
+                if (lastProfileImage) {
+                    console.log('로컬 스토리지에서 프로필 이미지 복원:', lastProfileImage);
+                    setProfileImage(lastProfileImage);
+                } else {
+                    setProfileImage(null);
+                }
+            }
             
             // 사용자 권한 상태 즉시 설정 (비동기 함수 없이)
             // 디버깅을 위한 로그
@@ -344,7 +365,35 @@ const Settings = () => {
 
     // 프로필 이미지 업데이트 핸들러
     const handleProfileImageUpdate = (imageUrl) => {
-        setProfileImage(imageUrl);
+        // 서버에서 이미지 URL을 반환하지 않았지만 업로드는 성공한 경우
+        if (imageUrl === 'success') {
+            console.log('이미지 업로드 성공, 새로고침 없이 성공 메시지만 표시');
+            setSuccess('프로필 이미지가 성공적으로 업데이트되었습니다. 변경사항이 다음 로그인 시 또는 페이지 새로고침 후 적용됩니다.');
+            return;
+        }
+        
+        // Blob URL인지 확인
+        if (imageUrl.startsWith('blob:')) {
+            console.warn('Blob URL은 임시적이며 사용할 수 없습니다:', imageUrl);
+            setError('이미지 URL 오류: 서버에서 영구 URL을 받지 못했습니다.');
+            return;
+        }
+        
+        console.log('프로필 이미지 업데이트 (서버 URL):', imageUrl);
+        
+        // 캐시 방지를 위해 타임스탬프 추가
+        const timestamp = new Date().getTime();
+        const imageWithTimestamp = imageUrl.includes('?') 
+            ? `${imageUrl}&t=${timestamp}` 
+            : `${imageUrl}?t=${timestamp}`;
+        
+        // 로컬 스토리지에 최신 프로필 이미지 URL 저장
+        localStorage.setItem('last_profile_image', imageWithTimestamp);
+        
+        setProfileImage(imageWithTimestamp);
+        
+        // 사용자 객체 업데이트는 제거 - 이미 API에서 처리됨
+        
         setSuccess('프로필 이미지가 성공적으로 업데이트되었습니다.');
     };
 
@@ -561,6 +610,14 @@ const Settings = () => {
                         <div className="alert alert-success mt-4">
                             <CheckCircle className="h-5 w-5" />
                             <span>{success}</span>
+                            {success.includes('변경사항이 다음 로그인 시') && (
+                                <button 
+                                    className="btn btn-sm btn-outline btn-success ml-2"
+                                    onClick={() => window.location.reload()}
+                                >
+                                    지금 새로고침
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
@@ -571,8 +628,12 @@ const Settings = () => {
                     <div className="avatar mb-6">
                         <div className="w-40 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
                             <img 
-                                src={user?.profile_image || `https://placehold.co/200x200/9370DB/FFFFFF?text=${user?.username?.charAt(0) || 'U'}`} 
+                                src={profileImage || user?.profile_image || `https://placehold.co/200x200/9370DB/FFFFFF?text=${user?.username?.charAt(0) || 'U'}`} 
                                 alt={user?.username || '사용자'} 
+                                onError={(e) => {
+                                    e.target.onerror = null;
+                                    e.target.src = `https://placehold.co/200x200/9370DB/FFFFFF?text=${user?.username?.charAt(0) || 'U'}`;
+                                }}
                             />
                         </div>
                     </div>
