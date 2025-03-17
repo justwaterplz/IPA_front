@@ -1,13 +1,13 @@
 // components/Header.jsx
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, LogOut, Search, Upload } from 'lucide-react';
-import { useAuth } from '@/pages/auth/components/AuthContext';
+import { User, LogOut, Search, Upload, Shield } from 'lucide-react';
+import { useAuth, USER_ROLES } from '@/pages/auth/components/AuthContext';
 import SearchModal from '@/pages/search/components/SearchModal';
 
 const Header = ({ theme, setTheme }) => {
     const navigate = useNavigate();
-    const { isAuthenticated, user, logout } = useAuth();
+    const { isAuthenticated, user, logout, userRole } = useAuth();
     const [searchInput, setSearchInput] = useState('');
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
@@ -25,6 +25,9 @@ const Header = ({ theme, setTheme }) => {
             setIsSearchModalOpen(true);
         }
     };
+
+    // 관리자 여부 확인
+    const isAdmin = userRole === USER_ROLES.ADMIN;
 
     return (
         <>
@@ -46,6 +49,13 @@ const Header = ({ theme, setTheme }) => {
                             {isAuthenticated && (
                                 <Link to="/upload" className="btn btn-square tooltip tooltip-bottom flex items-center justify-center" data-tip="이미지 업로드">
                                     <Upload size={20} className="m-auto" />
+                                </Link>
+                            )}
+                            
+                            {/* 관리자 패널 버튼 - 관리자만 표시 */}
+                            {isAuthenticated && isAdmin && (
+                                <Link to="/admin" className="btn btn-square tooltip tooltip-bottom flex items-center justify-center" data-tip="관리자 패널">
+                                    <Shield size={20} className="m-auto" />
                                 </Link>
                             )}
                             
@@ -97,8 +107,17 @@ const Header = ({ theme, setTheme }) => {
                                                 )}
                                             </Link>
                                         </li>
-                                        <li><Link to="/my-posts">내 게시물</Link></li>
+                                        {/* <li><Link to="/my-posts">내 게시물</Link></li> */}
                                         <li><Link to="/settings">설정</Link></li>
+                                        {/* 관리자 패널 메뉴 항목 - 관리자만 표시 */}
+                                        {isAdmin && (
+                                            <li>
+                                                <Link to="/admin" className="text-primary">
+                                                    <Shield size={16} />
+                                                    관리자 패널
+                                                </Link>
+                                            </li>
+                                        )}
                                         <li>
                                             <button 
                                                 onClick={handleLogout}

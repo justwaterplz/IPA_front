@@ -193,13 +193,13 @@ const BoardGrid = ({ posts }) => {
                     ))}
                 </div>
 
-                <button 
+                {/* <button 
                     className="btn btn-square join-item"
                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                     disabled={currentPage === totalPages}
                 >
                     »
-                </button>
+                </button> */}
             </div>
 
             <ToastContainer

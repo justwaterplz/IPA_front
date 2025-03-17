@@ -25,7 +25,7 @@ const decodeJWT = (token) => {
 };
 
 // 테스트 모드 설정 - 전역 상수로 정의
-const TEST_MODE = true; // 테스트 모드 활성화/비활성화
+const TEST_MODE = false; // 테스트 모드 활성화/비활성화
 
 // 토큰 만료 시간 확인 함수
 const isTokenExpired = (token) => {
@@ -243,22 +243,23 @@ const userService = {
     try {
       console.log('로그인 요청 데이터:', { email, password });
       
-      // 이메일과 비밀번호로 로그인
-      const response = await api.post('/api/users/login/', { 
-        email, 
+      // JWT 토큰 발급 요청
+      const response = await api.post('/api/token/', { 
+        username: email, // Django의 기본 JWT 인증은 username을 사용
         password 
       });
       
       console.log('로그인 응답:', response.data);
       
-      // 토큰 저장 - 백엔드 응답 형식에 따라 토큰 필드 이름이 다를 수 있음
-      // 가능한 토큰 필드 이름: token, access_token, jwt, auth_token 등
-      const token = response.data.token || response.data.access_token || response.data.jwt;
-      if (token) {
-        console.log('토큰 저장:', token);
+      // JWT 토큰 저장
+      const { access, refresh } = response.data;
+      if (access) {
+        console.log('액세스 토큰 저장:', access);
+        localStorage.setItem('auth_token', access);
+        localStorage.setItem('refresh_token', refresh);
         
         // 토큰 디코딩 및 만료 시간 확인
-        const decodedToken = decodeJWT(token);
+        const decodedToken = decodeJWT(access);
         if (decodedToken) {
           console.log('디코딩된 토큰:', decodedToken);
           
@@ -271,15 +272,13 @@ const userService = {
             console.log(`토큰 만료까지 남은 시간: ${minutesUntilExpiration}분`);
           }
         }
-        
-        localStorage.setItem('auth_token', token);
       } else {
         console.warn('토큰이 응답에 포함되어 있지 않습니다:', response.data);
       }
       
-      // 백엔드 응답 형식에 따라 사용자 정보 반환
-      // 응답에 user 객체가 있으면 그대로 반환, 없으면 응답 데이터 자체를 반환
-      return response.data.user || response.data;
+      // 사용자 정보 조회
+      const userResponse = await api.get('/api/users/me/');
+      return userResponse.data;
     } catch (error) {
       console.error('로그인 오류 상세:', error);
       console.error('응답 데이터:', error.response?.data);
@@ -387,11 +386,32 @@ const userService = {
   // 사용자 정보 가져오기
   getUserById: async (userId) => {
     try {
+      console.log('사용자 정보 조회 요청:', userId);
+      
+      // UUID 형식 검증 (선택적)
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+      console.log('UUID 형식 여부:', isUUID);
+      
       // Swagger 문서에 표시된 사용자 정보 조회 엔드포인트 사용
       const response = await api.get(`/api/users/${userId}/`);
+      console.log('사용자 정보 응답:', response.data);
       return response.data;
     } catch (error) {
       console.error('사용자 정보를 가져오는 중 오류 발생:', error);
+      console.error('응답 데이터:', error.response?.data);
+      console.error('응답 상태:', error.response?.status);
+      
+      // 테스트 모드에서는 오류 발생 시 더미 데이터 반환
+      if (TEST_MODE) {
+        console.warn('테스트 모드: 더미 사용자 데이터 반환');
+        return {
+          id: userId,
+          username: '사용자',
+          email: 'user@example.com',
+          profile_image: null
+        };
+      }
+      
       return null;
     }
   },
@@ -416,7 +436,289 @@ const userService = {
     } catch (error) {
       throw new Error(error.response?.data?.message || error.response?.data?.detail || '사용자 삭제 중 오류가 발생했습니다.');
     }
+  },
+
+  // 관리자 요청 보내기
+  sendAdminRequest: async (requestData) => {
+    try {
+      console.log('관리자 요청 데이터:', requestData);
+      
+      // 테스트 모드에서는 더미 응답 반환
+      if (TEST_MODE) {
+        console.log('테스트 모드: 관리자 요청 처리');
+        return {
+          success: true,
+          message: '관리자 요청이 전송되었습니다.'
+        };
+      }
+      
+      // 실제 API 호출 - 백엔드 엔드포인트 업데이트
+      const response = await api.post('/api/users/admin-request/', requestData);
+      console.log('관리자 요청 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('관리자 요청 전송 중 오류:', error);
+      console.error('응답 데이터:', error.response?.data);
+      throw new Error(error.response?.data?.message || error.response?.data?.detail || '관리자 요청 전송 중 오류가 발생했습니다.');
+    }
+  },
+
+  // 권한 신청하기
+  requestApproval: async (requestData) => {
+    try {
+      console.log('권한 신청 데이터:', requestData);
+      
+      // 테스트 모드에서는 더미 응답 반환
+      if (TEST_MODE) {
+        console.log('테스트 모드: 권한 신청 처리');
+        return {
+          success: true,
+          message: '권한 신청이 성공적으로 전송되었습니다.'
+        };
+      }
+      
+      // 실제 API 호출 - 백엔드 엔드포인트 업데이트
+      const response = await api.post('/api/users/permission-request/', {
+        ...requestData,
+        requestType: 'permission_request'
+      });
+      
+      console.log('권한 신청 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('권한 신청 중 오류:', error);
+      console.error('응답 데이터:', error.response?.data);
+      throw new Error(error.response?.data?.message || error.response?.data?.detail || '권한 신청 중 오류가 발생했습니다.');
+    }
+  },
+
+  // 현재 사용자의 요청 목록 가져오기
+  getUserRequests: async (params = {}) => {
+    try {
+      console.log('사용자 요청 목록 조회 요청:', params);
+      
+      // 테스트 모드에서는 더미 응답 반환
+      if (TEST_MODE) {
+        console.log('테스트 모드: 더미 사용자 요청 목록 반환');
+        
+        // 더미 데이터 생성
+        const dummyRequests = generateDummyRequests(5);
+        
+        return {
+          results: dummyRequests,
+          count: dummyRequests.length,
+          next: null,
+          previous: null
+        };
+      }
+      
+      // 실제 API 호출
+      const response = await api.get('/api/users/my-requests/', { params });
+      console.log('사용자 요청 목록 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('사용자 요청 목록 조회 중 오류:', error);
+      console.error('응답 데이터:', error.response?.data);
+      throw new Error(error.response?.data?.message || error.response?.data?.detail || '사용자 요청 목록 조회 중 오류가 발생했습니다.');
+    }
+  },
+
+  // 관리자 요청 목록 가져오기 (관리자용)
+  getAdminRequests: async (params = {}) => {
+    try {
+      console.log('관리자 요청 목록 조회 요청:', params);
+      
+      // 테스트 모드에서는 더미 응답 반환
+      if (TEST_MODE) {
+        console.log('테스트 모드: 더미 관리자 요청 목록 반환');
+        
+        // 더미 데이터 생성
+        const dummyRequests = generateDummyRequests(15);
+        
+        return {
+          results: dummyRequests,
+          count: dummyRequests.length,
+          next: null,
+          previous: null
+        };
+      }
+      
+      // 실제 API 호출 - 백엔드 엔드포인트 업데이트
+      const response = await api.get('/api/users/admin/requests/', { params });
+      console.log('관리자 요청 목록 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('관리자 요청 목록 조회 중 오류:', error);
+      console.error('응답 데이터:', error.response?.data);
+      throw new Error(error.response?.data?.message || error.response?.data?.detail || '관리자 요청 목록 조회 중 오류가 발생했습니다.');
+    }
+  },
+  
+  // 관리자 요청 상세 조회 (관리자용)
+  getAdminRequestDetail: async (requestId) => {
+    try {
+      console.log('관리자 요청 상세 조회 요청:', requestId);
+      
+      // 테스트 모드에서는 더미 응답 반환
+      if (TEST_MODE) {
+        console.log('테스트 모드: 더미 관리자 요청 상세 반환');
+        
+        // 더미 데이터 생성
+        const dummyRequest = generateDummyRequests(1)[0];
+        dummyRequest.id = requestId;
+        
+        return dummyRequest;
+      }
+      
+      // 실제 API 호출
+      const response = await api.get(`/api/users/admin/requests/${requestId}/`);
+      console.log('관리자 요청 상세 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('관리자 요청 상세 조회 중 오류:', error);
+      console.error('응답 데이터:', error.response?.data);
+      throw new Error(error.response?.data?.message || error.response?.data?.detail || '관리자 요청 상세 조회 중 오류가 발생했습니다.');
+    }
+  },
+  
+  // 관리자 요청 처리 (승인/거부)
+  processAdminRequest: async (requestId, action, adminNote = '') => {
+    try {
+      console.log(`관리자 요청 ${action} 처리:`, requestId);
+      
+      // 테스트 모드에서는 더미 응답 반환
+      if (TEST_MODE) {
+        console.log(`테스트 모드: 관리자 요청 ${action} 처리`);
+        return {
+          success: true,
+          message: `요청이 성공적으로 ${action === 'approve' ? '승인' : '거부'}되었습니다.`
+        };
+      }
+      
+      // 실제 API 호출 - 백엔드 엔드포인트 업데이트
+      const response = await api.post(`/api/users/admin/requests/${requestId}/${action}/`, {
+        admin_note: adminNote
+      });
+      
+      console.log(`관리자 요청 ${action} 응답:`, response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`관리자 요청 ${action} 처리 중 오류:`, error);
+      console.error('응답 데이터:', error.response?.data);
+      throw new Error(error.response?.data?.message || error.response?.data?.detail || `관리자 요청 ${action} 처리 중 오류가 발생했습니다.`);
+    }
+  },
+
+  // 토큰 갱신
+  refreshToken: async () => {
+    try {
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (!refreshToken) {
+        throw new Error('리프레시 토큰이 없습니다.');
+      }
+
+      const response = await api.post('/api/token/refresh/', {
+        refresh: refreshToken
+      });
+
+      const { access } = response.data;
+      if (access) {
+        localStorage.setItem('auth_token', access);
+        return access;
+      } else {
+        throw new Error('새로운 액세스 토큰을 받지 못했습니다.');
+      }
+    } catch (error) {
+      console.error('토큰 갱신 중 오류:', error);
+      // 토큰 갱신 실패 시 로그아웃 처리
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('refresh_token');
+      throw error;
+    }
+  },
+
+  // 토큰 검증
+  verifyToken: async (token) => {
+    try {
+      await api.post('/api/token/verify/', {
+        token: token
+      });
+      return true;
+    } catch (error) {
+      console.error('토큰 검증 중 오류:', error);
+      return false;
+    }
+  },
+
+  // 프로필 이미지 업로드
+  updateProfileImage: async (formData, userId) => {
+    try {
+      if (!userId) {
+        throw new Error('사용자 정보가 없습니다.');
+      }
+      
+      // multipart/form-data를 사용할 때는 Content-Type을 명시적으로 설정하지 않음
+      // Axios가 자동으로 boundary 값을 포함한 Content-Type을 설정하도록 함
+      const config = {
+        headers: {
+          // 'Content-Type': 'multipart/form-data' 제거
+        }
+      };
+      
+      console.log('프로필 이미지 업로드 요청:', userId);
+      console.log('FormData 내용:');
+      for (let [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(`${key}: 파일명=${value.name}, 타입=${value.type}, 크기=${value.size}바이트`);
+        } else {
+          console.log(`${key}: ${value}`);
+        }
+      }
+      
+      // 백엔드 API 명세에 맞게 프로필 이미지 업로드 엔드포인트 사용
+      console.log('프로필 이미지 업로드 엔드포인트로 이미지 업로드 시도');
+      const response = await api.post(`/api/users/${userId}/profile-image/`, formData, config);
+      console.log('프로필 이미지 업로드 성공:', response.data);
+      return response.data;
+      
+    } catch (error) {
+      console.error('프로필 이미지 업로드 오류:', error);
+      console.error('응답 상태:', error.response?.status);
+      console.error('응답 데이터:', error.response?.data);
+      
+      // 테스트 모드에서는 더미 응답 반환
+      if (TEST_MODE) {
+        console.warn('테스트 모드: 더미 프로필 이미지 URL 반환');
+        return {
+          profile_image: `https://placehold.co/200x200/9370DB/FFFFFF?text=${userId.charAt(0) || 'U'}`
+        };
+      }
+      
+      throw new Error(error.response?.data?.message || error.response?.data?.detail || '프로필 이미지 업로드 중 오류가 발생했습니다.');
+    }
   }
+};
+
+// 더미 요청 데이터 생성 함수 (개발용)
+const generateDummyRequests = (count = 10) => {
+  const statuses = ['pending', 'approved', 'rejected'];
+  const types = ['general_request', 'permission_request', 'feature_request', 'bug_report'];
+  const users = [
+    { id: '1', username: 'user1', email: 'user1@example.com', profile_image: 'https://placehold.co/100x100/9370DB/FFFFFF?text=U1' },
+    { id: '2', username: 'user2', email: 'user2@example.com', profile_image: 'https://placehold.co/100x100/4682B4/FFFFFF?text=U2' },
+    { id: '3', username: 'user3', email: 'user3@example.com', profile_image: 'https://placehold.co/100x100/20B2AA/FFFFFF?text=U3' }
+  ];
+  
+  return Array.from({ length: count }, (_, i) => ({
+    id: `req-${i + 1}`,
+    user: users[i % users.length],
+    type: types[i % types.length],
+    message: `이것은 테스트 요청 #${i + 1}입니다. 이 요청은 개발 중에 사용되는 더미 데이터입니다.`,
+    status: statuses[i % statuses.length],
+    created_at: new Date(Date.now() - i * 86400000).toISOString(), // i일 전
+    updated_at: new Date(Date.now() - i * 43200000).toISOString(), // i/2일 전
+    admin_note: i % 3 === 0 ? '이 요청은 관리자에 의해 처리되었습니다.' : null
+  }));
 };
 
 // 게시물 관련 API 서비스

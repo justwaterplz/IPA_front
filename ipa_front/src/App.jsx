@@ -5,20 +5,45 @@ import RootLayout from "@/components/layout/RootLayout.jsx";
 import AuthForm from '@/pages/auth';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import PostDetail from '@/pages/postDetail';
-import { AuthProvider, useAuth } from '@/pages/auth/components/AuthContext';
+import { AuthProvider, useAuth, USER_ROLES } from '@/pages/auth/components/AuthContext';
 import Profile from '@/pages/personal';
 import PublicProfile from './pages/personal/components/publicProfile';
 import Search from '@/pages/search';
 import UploadPage from '@/pages/upload';
+import Settings from '@/settings';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useState, useEffect } from 'react';
+import AdminPanel from '@/pages/admin';
 
 // 홈 리다이렉트 컴포넌트 - 로그인 상태에 따라 적절한 페이지로 리다이렉트
 const HomeRedirect = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, userRole } = useAuth();
   
-  // 로그인 상태에 따라 포스트 목록 또는 로그인 페이지로 리다이렉트
-  return isAuthenticated ? <PostList /> : <Navigate to="/login" replace />;
+  // 로그인하지 않은 경우 로그인 페이지로 리다이렉트
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  // 권한이 없는 사용자는 설정 페이지로 리다이렉트
+  if (userRole === USER_ROLES.PENDING) {
+    return <Navigate to="/settings" replace />;
+  }
+  
+  // 권한이 있는 사용자는 포스트 목록으로 리다이렉트
+  return <PostList />;
+};
+
+// 회원가입 후 리다이렉트 컴포넌트
+const RegisterRedirect = () => {
+  const { isAuthenticated, userRole } = useAuth();
+  
+  // 로그인하지 않은 경우 로그인 페이지로 리다이렉트
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  // 회원가입 후 설정 페이지로 리다이렉트
+  return <Navigate to="/settings" replace />;
 };
 
 const App = () => {
@@ -42,24 +67,39 @@ const App = () => {
                   <Route element={<RootLayout theme={theme} setTheme={setTheme} />}>
                       <Route path="/" element={<HomeRedirect />} />
                       <Route path="/post" element={
-                          <ProtectedRoute>
+                          <ProtectedRoute requiredRole={USER_ROLES.USER}>
                               <PostList />
                           </ProtectedRoute>
                       } />
                       <Route path="/post/:id" element={<PostDetail />} />
                       <Route path="/login" element={<AuthForm theme={theme} setTheme={setTheme} />} />
+                      <Route path="/register" element={<AuthForm theme={theme} setTheme={setTheme} isRegister={true} />} />
+                      <Route path="/register/success" element={<RegisterRedirect />} />
                       <Route path="/posts/:id" element={<PostDetail />} />
                       <Route path="/profile" element={
-                          <ProtectedRoute>
+                          <ProtectedRoute requiredRole={USER_ROLES.USER}>
                               <Profile />
                           </ProtectedRoute>
                       } />
                       <Route path="/users/:id" element={<PublicProfile />} />
-                      <Route path="/search" element={<Search />} />
-                      {/* 보호된 라우트 - 로그인한 사용자만 접근 가능 */}
+                      <Route path="/search" element={
+                          <ProtectedRoute requiredRole={USER_ROLES.USER}>
+                              <Search />
+                          </ProtectedRoute>
+                      } />
+                      <Route path="/settings" element={
+                          <ProtectedRoute requiredRole={USER_ROLES.PENDING}>
+                              <Settings />
+                          </ProtectedRoute>
+                      } />
                       <Route path="/upload" element={
-                          <ProtectedRoute>
+                          <ProtectedRoute requiredRole={USER_ROLES.USER}>
                               <UploadPage />
+                          </ProtectedRoute>
+                      } />
+                      <Route path="/admin" element={
+                          <ProtectedRoute requiredRole={USER_ROLES.ADMIN}>
+                              <AdminPanel />
                           </ProtectedRoute>
                       } />
                   </Route>

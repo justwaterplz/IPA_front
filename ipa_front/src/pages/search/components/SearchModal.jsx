@@ -81,7 +81,6 @@ const SearchModal = ({ isOpen, onClose }) => {
                 onClick={onClose}
             ></div>
             
-            {/* 모달 컨텐츠 - 더 위로 올림 */}
             <div className="fixed inset-0 z-[201] flex items-start justify-center pt-16 pointer-events-none">
                 <div 
                     className="bg-base-100 rounded-lg shadow-2xl border border-gray-200 w-full max-w-3xl mx-4 p-6 animate-fadeIn pointer-events-auto"

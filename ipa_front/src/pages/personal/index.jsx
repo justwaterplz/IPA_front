@@ -3,13 +3,12 @@ import { useAuth } from '@/pages/auth/components/AuthContext';
 import { Edit, X, Check, Loader, User, ArrowLeft, Calendar } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { postService, userService } from '@/utils/apiService';
+import { API_BASE_URL } from '@/utils/apiService';
 
 const Profile = () => {
     const { user, updateUser } = useAuth();
-    const [isEditingName, setIsEditingName] = useState(false);
-    const [newName, setNewName] = useState(user?.username || '');
     const [isLoading, setIsLoading] = useState(false);
-    const [imageLoaded, setImageLoaded] = useState({});
+    const [imageLoaded, setImageLoaded] = useState({ avatar: false });
     const [currentSlide, setCurrentSlide] = useState(0);
     const [userPosts, setUserPosts] = useState([]);
     const [userBookmarks, setUserBookmarks] = useState([]);
@@ -17,6 +16,49 @@ const Profile = () => {
     const [selectedYear, setSelectedYear] = useState(2025);
     const [activeTab, setActiveTab] = useState('posts'); // 'posts' 또는 'bookmarks'
     
+    // 기본 프로필 이미지 제거 (Lucide User 아이콘으로 대체)
+    // const DEFAULT_PROFILE_IMAGE = 'https://api.dicebear.com/7.x/avataaars/svg?seed=';
+    // const getDefaultProfileImage = (userId) => {
+    //     return `${DEFAULT_PROFILE_IMAGE}${userId || 'default'}`;
+    // };
+
+    // 이미지 URL 처리 함수
+    const getImageUrl = (post) => {
+        // 이미지 필드가 다양한 이름으로 존재할 수 있음
+        const imageField = post.imageUrl || post.image_url || post.image || '';
+        
+        console.log('이미지 필드 처리 중:', {
+            id: post.id,
+            originalImageField: imageField,
+            availableFields: {
+                imageUrl: post.imageUrl,
+                image_url: post.image_url,
+                image: post.image
+            }
+        });
+        
+        // 이미지가 없는 경우
+        if (!imageField) {
+            // 게시물 내용 기반 더미 이미지 생성
+            const content = post?.prompt || post?.title || post?.content || '';
+            const encodedContent = encodeURIComponent(content.trim() || 'image');
+            const fallbackUrl = `https://source.unsplash.com/300x300/?${encodedContent}`;
+            console.log('이미지 없음, 대체 이미지 사용:', fallbackUrl);
+            return fallbackUrl;
+        }
+        
+        // 이미 완전한 URL인 경우
+        if (imageField.startsWith('http')) {
+            console.log('완전한 URL 사용:', imageField);
+            return imageField;
+        }
+        
+        // 상대 경로인 경우 API_BASE_URL과 결합
+        const fullUrl = `${API_BASE_URL}${imageField}`;
+        console.log('API URL과 결합:', fullUrl);
+        return fullUrl;
+    };
+
     // 사용자 게시물 가져오기
     useEffect(() => {
         const fetchUserData = async () => {
@@ -27,11 +69,67 @@ const Profile = () => {
                     // 사용자 게시물 가져오기
                     const postsResponse = await postService.getUserPosts();
                     console.log('사용자 게시물:', postsResponse);
-                    setUserPosts(postsResponse.results || []);
+                    
+                    // 게시물 데이터 정제 - 날짜 형식 검증 및 이미지 URL 처리
+                    const validatedPosts = (postsResponse.results || []).map(post => {
+                        // 날짜 형식 검증
+                        if (post.createdAt) {
+                            try {
+                                const date = new Date(post.createdAt);
+                                // 유효한 날짜인지 확인
+                                if (isNaN(date.getTime())) {
+                                    console.warn('유효하지 않은 날짜 형식:', post.createdAt);
+                                    // 현재 날짜로 대체
+                                    post.createdAt = new Date().toISOString();
+                                }
+                            } catch (error) {
+                                console.error('날짜 변환 중 오류:', error);
+                                // 현재 날짜로 대체
+                                post.createdAt = new Date().toISOString();
+                            }
+                        } else {
+                            // createdAt이 없는 경우 현재 날짜 설정
+                            post.createdAt = new Date().toISOString();
+                        }
+                        
+                        // 이미지 URL 처리 - 백엔드 응답 구조에 맞게 매핑
+                        post.imageUrl = getImageUrl(post);
+                        
+                        return post;
+                    });
+                    
+                    setUserPosts(validatedPosts);
                     
                     // 사용자 북마크 가져오기
                     const bookmarksResponse = await postService.getUserBookmarks();
-                    setUserBookmarks(bookmarksResponse.results || []);
+                    
+                    // 북마크 데이터 정제 - 날짜 형식 검증
+                    const validatedBookmarks = (bookmarksResponse.results || []).map(post => {
+                        // 날짜 형식 검증
+                        if (post.createdAt) {
+                            try {
+                                const date = new Date(post.createdAt);
+                                // 유효한 날짜인지 확인
+                                if (isNaN(date.getTime())) {
+                                    // 현재 날짜로 대체
+                                    post.createdAt = new Date().toISOString();
+                                }
+                            } catch (error) {
+                                // 현재 날짜로 대체
+                                post.createdAt = new Date().toISOString();
+                            }
+                        } else {
+                            // createdAt이 없는 경우 현재 날짜 설정
+                            post.createdAt = new Date().toISOString();
+                        }
+                        
+                        // 이미지 URL 처리 - 백엔드 응답 구조에 맞게 매핑
+                        post.imageUrl = getImageUrl(post);
+                        
+                        return post;
+                    });
+                    
+                    setUserBookmarks(validatedBookmarks);
                 } catch (error) {
                     console.error('사용자 데이터를 가져오는 중 오류 발생:', error);
                     setUserPosts([]);
@@ -43,26 +141,13 @@ const Profile = () => {
         fetchUserData();
     }, [user]);
     
-    // 이름 변경 핸들러
-    const handleNameChange = async () => {
-        if (!newName.trim()) return;
-        
-        setIsLoading(true);
-        try {
-            // API 호출 - 사용자 정보 업데이트
-            await updateUser({ username: newName });
-            setIsEditingName(false);
-            // 성공 토스트 메시지
-        } catch (error) {
-            console.error('사용자 정보 업데이트 중 오류 발생:', error);
-            // 에러 토스트 메시지
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     // 이미지 로드 핸들러
     const handleImageLoad = (id) => {
+        setImageLoaded(prev => ({ ...prev, [id]: true }));
+    };
+
+    // 이미지 로드 실패 핸들러
+    const handleImageError = (id) => {
         setImageLoaded(prev => ({ ...prev, [id]: true }));
     };
 
@@ -75,10 +160,36 @@ const Profile = () => {
         // 게시물 날짜별 카운트
         const postCountByDate = {};
         userPosts.forEach(post => {
-            const date = new Date(post.createdAt);
-            const dateKey = date.toISOString().split('T')[0];
-            postCountByDate[dateKey] = (postCountByDate[dateKey] || 0) + 1;
-            console.log(`게시물 날짜: ${dateKey}`);
+            try {
+                // 날짜 형식 검증 및 안전한 변환
+                let date;
+                if (post.createdAt) {
+                    // ISO 형식 문자열인지 확인
+                    if (typeof post.createdAt === 'string' && post.createdAt.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
+                        date = new Date(post.createdAt);
+                    } 
+                    // 타임스탬프인 경우
+                    else if (typeof post.createdAt === 'number') {
+                        date = new Date(post.createdAt);
+                    }
+                    // 다른 형식의 날짜 문자열
+                    else if (typeof post.createdAt === 'string') {
+                        // 날짜 형식이 다를 수 있으므로 여러 형식 시도
+                        date = new Date(post.createdAt);
+                    }
+                }
+
+                // 유효한 날짜인지 확인
+                if (date && !isNaN(date.getTime())) {
+                    const dateKey = date.toISOString().split('T')[0];
+                    postCountByDate[dateKey] = (postCountByDate[dateKey] || 0) + 1;
+                    console.log(`게시물 날짜: ${dateKey}`);
+                } else {
+                    console.warn('유효하지 않은 날짜 형식:', post.createdAt);
+                }
+            } catch (error) {
+                console.error('날짜 처리 중 오류 발생:', error, post);
+            }
         });
         
         const weeks = [];
@@ -143,7 +254,7 @@ const Profile = () => {
                     else level = 4;
                 }
                 
-                // dayOffset이 그대로 요일 인덱스가 됨 (0: 월요일, 1: 화요일, ..., 6: 일요일)
+                // dayOffset이 그대로 요일 인덱스가 됨 (0: 월요일, 1: 화, ..., 6: 일)
                 
                 week.push({
                     date: currentDate,
@@ -205,12 +316,15 @@ const Profile = () => {
                                     imageLoaded.avatar ? 'opacity-100' : 'opacity-0'
                                 }`}
                                 onLoad={() => handleImageLoad('avatar')}
+                                onError={() => handleImageError('avatar')}
                             />
                         ) : (
-                            <div className={`w-full h-full flex items-center justify-center bg-primary/10 ${
-                                imageLoaded.avatar ? 'opacity-100' : 'opacity-0'
-                            }`}
-                            onLoad={() => handleImageLoad('avatar')}>
+                            <div 
+                                className={`w-full h-full flex items-center justify-center bg-primary/10 ${
+                                    imageLoaded.avatar ? 'opacity-100' : 'opacity-0'
+                                }`}
+                                onLoad={() => handleImageLoad('avatar')}
+                            >
                                 <User 
                                     size={48} 
                                     className="text-primary"
@@ -220,44 +334,13 @@ const Profile = () => {
                     </div>
                 </div>
 
-                {/* 이름 및 편집 */}
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                    {isEditingName ? (
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="text"
-                                value={newName}
-                                onChange={(e) => setNewName(e.target.value)}
-                                className="input input-bordered input-sm"
-                                disabled={isLoading}
-                                autoFocus
-                            />
-                            <button 
-                                className="btn btn-circle btn-sm btn-ghost"
-                                onClick={() => setIsEditingName(false)}
-                                disabled={isLoading}
-                            >
-                                <X size={16} />
-                            </button>
-                            <button 
-                                className="btn btn-circle btn-sm btn-primary"
-                                onClick={handleNameChange}
-                                disabled={isLoading}
-                            >
-                                {isLoading ? <Loader className="animate-spin" /> : <Check size={16} />}
-                            </button>
-                        </div>
-                    ) : (
-                        <>
-                            <h1 className="text-2xl font-bold">{user?.name}</h1>
-                            <button 
-                                className="btn btn-ghost btn-sm"
-                                onClick={() => setIsEditingName(true)}
-                            >
-                                <Edit size={16} />
-                                이름 변경
-                            </button>
-                        </>
+                {/* 이름 및 편집 - 수정 */}
+                <div className="flex flex-col items-start gap-2">
+                    <div className="flex items-center gap-4">
+                        <h1 className="text-2xl font-bold">{user?.username || '사용자'}</h1>
+                    </div>
+                    {user?.email && (
+                        <p className="text-sm text-gray-500">{user.email}</p>
                     )}
                 </div>
                 
@@ -431,21 +514,24 @@ const Profile = () => {
                                             </div>
                                         )}
                                         <img
-                                            src={post.imageUrl}
-                                            alt={post.prompt}
+                                            src={getImageUrl(post)}
+                                            alt={post.prompt || post.title || '이미지'}
                                             className={`rounded-lg w-full h-full object-cover transition-opacity duration-200 ${
                                                 imageLoaded[post.id] ? 'opacity-100' : 'opacity-0'
                                             }`}
                                             onLoad={() => handleImageLoad(post.id)}
+                                            onError={() => handleImageError(post.id)}
                                         />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent rounded-lg flex flex-col justify-end p-3">
                                             <div className="text-white text-sm font-medium line-clamp-2">
-                                                {post.prompt}
+                                                {post.prompt || post.title || '제목 없음'}
                                             </div>
                                             <div className="flex justify-between items-center mt-1">
-                                                <span className="badge badge-sm">{post.model}</span>
+                                                <span className="badge badge-sm">{post.model || post.category || '기타'}</span>
                                                 <span className="text-xs text-white/80">
-                                                    {new Date(post.createdAt).toLocaleDateString()}
+                                                    {post.createdAt && !isNaN(new Date(post.createdAt).getTime()) 
+                                                        ? new Date(post.createdAt).toLocaleDateString() 
+                                                        : '날짜 없음'}
                                                 </span>
                                             </div>
                                         </div>

@@ -3,10 +3,29 @@ import { userService } from '@/utils/apiService';
 
 const AuthContext = createContext(null);
 
+export const USER_ROLES = {
+  GUEST: 'guest',       // 로그인하지 않은 사용자
+  PENDING: 'pending',   // 승인 대기 중인 사용자
+  USER: 'user',         // 승인된 일반 사용자
+  ADMIN: 'admin'        // 관리자
+};
+
+export const PERMISSION_STATUS = {
+  NOT_REQUESTED: 'not_requested',  // 권한 신청 전
+  PENDING: 'pending',              // 승인 대기 중
+  APPROVED: 'approved',            // 승인됨
+  REJECTED: 'rejected'             // 거부됨
+};
+
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    
+    // 사용자 권한 관련 상태 추가
+    const [userRole, setUserRole] = useState(USER_ROLES.GUEST);
+    const [permissionStatus, setPermissionStatus] = useState(PERMISSION_STATUS.NOT_REQUESTED);
 
     // 토큰 유효성 검사 함수
     const checkTokenValidity = async () => {
@@ -16,17 +35,40 @@ export const AuthProvider = ({ children }) => {
             if (authData.isAuthenticated && authData.currentUser) {
                 setUser(authData.currentUser);
                 setIsAuthenticated(true);
+                
+                // 사용자 권한 설정
+                if (authData.currentUser.role === 'admin') {
+                    setUserRole(USER_ROLES.ADMIN);
+                    setPermissionStatus(PERMISSION_STATUS.APPROVED);
+                } else if (authData.currentUser.role === 'user') {
+                    setUserRole(USER_ROLES.USER);
+                    setPermissionStatus(PERMISSION_STATUS.APPROVED);
+                } else {
+                    // 권한 상태 설정 (백엔드에서 받아와야 함)
+                    const permStatus = authData.currentUser.permissionStatus || PERMISSION_STATUS.NOT_REQUESTED;
+                    setPermissionStatus(permStatus);
+                    
+                    if (permStatus === PERMISSION_STATUS.APPROVED) {
+                        setUserRole(USER_ROLES.USER);
+                    } else {
+                        setUserRole(USER_ROLES.PENDING);
+                    }
+                }
                 return true;
             } else {
                 // 토큰이 유효하지 않은 경우
                 setUser(null);
                 setIsAuthenticated(false);
+                setUserRole(USER_ROLES.GUEST);
+                setPermissionStatus(PERMISSION_STATUS.NOT_REQUESTED);
                 return false;
             }
         } catch (error) {
             console.error('토큰 유효성 검사 중 오류:', error);
             setUser(null);
             setIsAuthenticated(false);
+            setUserRole(USER_ROLES.GUEST);
+            setPermissionStatus(PERMISSION_STATUS.NOT_REQUESTED);
             return false;
         }
     };
@@ -72,60 +114,171 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (email, password) => {
         try {
+            setLoading(true);
             const userData = await userService.login(email, password);
-            setUser(userData);
+            
             setIsAuthenticated(true);
+            setUser(userData);
+            
+            // 사용자 권한 설정
+            if (userData.role === 'admin') {
+                setUserRole(USER_ROLES.ADMIN);
+                setPermissionStatus(PERMISSION_STATUS.APPROVED);
+            } else if (userData.role === 'user') {
+                setUserRole(USER_ROLES.USER);
+                setPermissionStatus(PERMISSION_STATUS.APPROVED);
+            } else {
+                // 권한 상태 설정 (백엔드에서 받아와야 함)
+                const permStatus = userData.permissionStatus || PERMISSION_STATUS.NOT_REQUESTED;
+                setPermissionStatus(permStatus);
+                
+                if (permStatus === PERMISSION_STATUS.APPROVED) {
+                    setUserRole(USER_ROLES.USER);
+                } else {
+                    setUserRole(USER_ROLES.PENDING);
+                }
+            }
+            
             return userData;
         } catch (error) {
+            console.error('로그인 중 오류:', error);
+            setError(error.message || '로그인 중 오류가 발생했습니다.');
             throw error;
+        } finally {
+            setLoading(false);
         }
     };
 
     const register = async (userData) => {
         try {
+            setLoading(true);
             const newUser = await userService.register(userData);
+            
+            // 회원가입 후 자동 로그인 (백엔드 구현에 따라 다를 수 있음)
+            // 일반적으로는 회원가입 후 로그인 페이지로 리다이렉트하는 것이 좋음
+            setIsAuthenticated(true);
+            setUser(newUser);
+            
+            // 신규 사용자는 기본적으로 권한 신청 필요
+            setUserRole(USER_ROLES.PENDING);
+            setPermissionStatus(PERMISSION_STATUS.NOT_REQUESTED);
+            
             return newUser;
         } catch (error) {
+            console.error('회원가입 중 오류:', error);
+            setError(error.message || '회원가입 중 오류가 발생했습니다.');
             throw error;
+        } finally {
+            setLoading(false);
         }
     };
 
     const logout = async () => {
         try {
+            setLoading(true);
             await userService.logout();
-            setUser(null);
+            
             setIsAuthenticated(false);
+            setUser(null);
+            setUserRole(USER_ROLES.GUEST);
+            setPermissionStatus(PERMISSION_STATUS.NOT_REQUESTED);
         } catch (error) {
             console.error('로그아웃 중 오류:', error);
-            // 오류가 발생해도 로컬 상태는 초기화
-            setUser(null);
-            setIsAuthenticated(false);
+            setError('로그아웃 중 오류가 발생했습니다.');
+        } finally {
+            setLoading(false);
         }
     };
 
     const updateUser = async (userData) => {
         try {
-            if (user && user.id) {
-                const updatedUser = await userService.updateUser(user.id, userData);
-                setUser(updatedUser);
-                return updatedUser;
+            setLoading(true);
+            
+            if (!user || !user.id) {
+                throw new Error('사용자 정보가 없습니다.');
             }
+            
+            const updatedUser = await userService.updateUser(user.id, userData);
+            
+            // 업데이트된 사용자 정보 설정
+            setUser(prevUser => ({
+                ...prevUser,
+                ...updatedUser
+            }));
+            
+            return updatedUser;
         } catch (error) {
             console.error('사용자 정보 업데이트 중 오류:', error);
+            setError(error.message || '사용자 정보 업데이트 중 오류가 발생했습니다.');
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 권한 상태 업데이트 함수
+    const updatePermissionStatus = async (status) => {
+        try {
+            setPermissionStatus(status);
+            
+            if (status === PERMISSION_STATUS.APPROVED) {
+                setUserRole(USER_ROLES.USER);
+            } else {
+                setUserRole(USER_ROLES.PENDING);
+            }
+            
+            // 사용자 객체에도 권한 상태 업데이트
+            setUser(prevUser => ({
+                ...prevUser,
+                permissionStatus: status
+            }));
+            
+            return status;
+        } catch (error) {
+            console.error('권한 상태 업데이트 중 오류:', error);
+            setError('권한 상태 업데이트 중 오류가 발생했습니다.');
             throw error;
         }
     };
 
+    // 권한 확인 함수
+    const hasPermission = (requiredRole = USER_ROLES.USER) => {
+        // 관리자는 모든 권한을 가짐
+        if (userRole === USER_ROLES.ADMIN) return true;
+        
+        // 요구되는 권한에 따라 확인
+        switch (requiredRole) {
+            case USER_ROLES.ADMIN:
+                return userRole === USER_ROLES.ADMIN;
+            case USER_ROLES.USER:
+                return userRole === USER_ROLES.USER || userRole === USER_ROLES.ADMIN;
+            case USER_ROLES.PENDING:
+                return userRole === USER_ROLES.PENDING || userRole === USER_ROLES.USER || userRole === USER_ROLES.ADMIN;
+            case USER_ROLES.GUEST:
+                return true; // 모든 사용자가 접근 가능
+            default:
+                return false;
+        }
+    };
+
+    // 컨텍스트 값
+    const value = {
+        user,
+        isAuthenticated,
+        loading,
+        error,
+        userRole,
+        permissionStatus,
+        login,
+        logout,
+        register,
+        updateUser,
+        updatePermissionStatus,
+        hasPermission
+    };
+
     return (
-        <AuthContext.Provider value={{
-            user,
-            isAuthenticated,
-            loading,
-            login,
-            logout,
-            register,
-            updateUser
-        }}>
+        <AuthContext.Provider value={value}>
             {!loading && children}
         </AuthContext.Provider>
     );
