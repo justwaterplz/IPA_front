@@ -4,34 +4,15 @@ import { Upload, X, Image as ImageIcon, Plus, Tag } from 'lucide-react';
 import Header from '@/components/layout/header';
 import { postService, fileService } from '@/utils/apiService';
 import { useAuth } from '@/pages/auth/components/AuthContext';
+import { useModels } from '@/contexts/ModelContext';
 
-// AI 모델 목록 (실제로는 API에서 가져올 수 있음)
-const AI_MODELS = [
-    { 
-        name: 'Midjourney', 
-        versions: ['v5.0', 'v5.1', 'v5.2', 'v6.0'] 
-    },
-    { 
-        name: 'DALL-E', 
-        versions: ['DALL-E 2', 'DALL-E 3'] 
-    },
-    { 
-        name: 'Stable Diffusion', 
-        versions: ['v1.5', 'v2.0', 'v2.1', 'XL 1.0'] 
-    },
-    { 
-        name: 'Imagen', 
-        versions: ['Imagen 1', 'Imagen 2'] 
-    },
-    { 
-        name: 'Firefly', 
-        versions: ['v1', 'v2'] 
-    }
-];
+// AI 모델 목록 (이제 API에서 가져옵니다)
+// const AI_MODELS = [ ... ];
 
 const UploadPage = () => {
     const navigate = useNavigate();
     const { isAuthenticated, user } = useAuth();
+    const { models, loading: loadingModels } = useModels();
     const [selectedFile, setSelectedFile] = useState(null);
     const [previewUrl, setPreviewUrl] = useState('');
     const [prompt, setPrompt] = useState('');
@@ -48,7 +29,7 @@ const UploadPage = () => {
         model: '',
         version: ''
     });
-
+    
     // 최대 게시물 수 제한
     const MAX_POSTS_PER_USER = 10;
 
@@ -79,7 +60,7 @@ const UploadPage = () => {
 
     // 선택된 모델에 따른 버전 목록
     const availableVersions = selectedModel 
-        ? AI_MODELS.find(model => model.name === selectedModel)?.versions || []
+        ? models.find(model => model.name === selectedModel)?.versions || []
         : [];
 
     // 로그인 상태 확인
@@ -437,13 +418,20 @@ const UploadPage = () => {
                             className={`select select-bordered w-full ${errors.model ? 'select-error' : ''}`}
                             value={selectedModel}
                             onChange={handleModelChange}
+                            disabled={loadingModels}
                         >
                             <option value="">AI 모델 선택</option>
-                            {AI_MODELS.map(model => (
-                                <option key={model.name} value={model.name}>
-                                    {model.name}
-                                </option>
-                            ))}
+                            {loadingModels ? (
+                                <option value="" disabled>모델 목록 로딩 중...</option>
+                            ) : models.length === 0 ? (
+                                <option value="" disabled>사용 가능한 모델이 없습니다</option>
+                            ) : (
+                                models.map(model => (
+                                    <option key={model.id} value={model.name}>
+                                        {model.name}
+                                    </option>
+                                ))
+                            )}
                         </select>
                         {errors.model && (
                             <p className="text-red-500 mt-1">{errors.model}</p>

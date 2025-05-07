@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/pages/auth/components/AuthContext';
 import { Shield, Users, MessageSquare, Settings, Loader, ArrowLeft } from 'lucide-react';
 import AdminRequestList from './components/AdminRequestList';
+import AdminModelManager from './components/AdminModelManager';
 import AdminLayout from './components/AdminLayout';
 
 const AdminPanel = () => {
@@ -77,9 +78,8 @@ const AdminPanel = () => {
                         </div>
                     )}
                     {activeTab === 'settings' && (
-                        <div className="text-center py-8">
-                            <h2 className="text-xl font-semibold mb-4">관리자 설정</h2>
-                            <p className="text-gray-500">이 기능은 아직 개발 중입니다.</p>
+                        <div className="py-4">
+                            <AdminModelManager />
                         </div>
                     )}
                 </div>

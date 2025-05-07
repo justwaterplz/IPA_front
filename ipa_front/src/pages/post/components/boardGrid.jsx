@@ -58,8 +58,14 @@ const BoardGrid = ({ posts }) => {
     
     // 디버깅을 위해 게시물 데이터 로깅
     console.log('게시물 데이터 (첫 번째 항목):', posts.length > 0 ? posts[0] : 'No posts');
-    
-    const sortedPosts = [...posts].reverse();
+
+    // 최신 게시물이 앞에 오도록 명시적으로 날짜 기준 정렬
+    // 백엔드에서 이미 최신순으로 정렬된 데이터가 온다면 이 정렬은 불필요할 수 있음
+    const sortedPosts = [...posts].sort((a, b) => {
+        // created_at 필드로 정렬 (최신 날짜가 먼저 오도록)
+        return new Date(b.created_at) - new Date(a.created_at);
+    });
+
     const indexOfLastPost = currentPage * POSTS_PER_PAGE;
     const indexOfFirstPost = indexOfLastPost - POSTS_PER_PAGE;
     const currentPosts = sortedPosts.slice(indexOfFirstPost, indexOfLastPost);

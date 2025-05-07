@@ -25,7 +25,8 @@ const decodeJWT = (token) => {
 };
 
 // 테스트 모드 설정 - 전역 상수로 정의
-const TEST_MODE = false; // 테스트 모드 활성화/비활성화
+const TEST_MODE = false; // 전체 테스트 모드 (인증 포함) - 비활성화
+const MODEL_TEST_MODE = false; // 모델 API 관련 테스트 모드 - 비활성화
 
 // 토큰 만료 시간 확인 함수
 const isTokenExpired = (token) => {
@@ -51,7 +52,7 @@ const isTokenExpired = (token) => {
 
 // API 기본 설정
 // Vite 환경변수에서 API 기본 URL 가져오기
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
 // axios 인스턴스 생성
 const api = axios.create({
@@ -70,7 +71,7 @@ api.interceptors.request.use(
     // 토큰 관련 코드를 주석 처리하거나 조건부로 적용할 수 있습니다
     
     // 테스트 모드에서는 토큰 인증을 건너뛰기
-    const skipAuth = TEST_MODE; // 테스트 모드와 일치시킴
+    const skipAuth = TEST_MODE; // 전체 테스트 모드일 때만 인증 스킵
     
     if (!skipAuth) {
       const token = localStorage.getItem('auth_token');
@@ -140,6 +141,37 @@ api.interceptors.response.use(
 
 // 개발 모드에서 더미 데이터 사용 여부
 const USE_DUMMY_DATA = false; // 백엔드 연동이 완료되면 false로 변경
+
+// 하드코딩된 모델 데이터를 반환하는 함수
+const getHardcodedModelData = () => {
+  return [
+    { 
+      id: "1",
+      name: 'Midjourney', 
+      versions: ['v5.0', 'v5.1', 'v5.2', 'v6.0'] 
+    },
+    { 
+      id: "2",
+      name: 'DALL-E', 
+      versions: ['DALL-E 2', 'DALL-E 3'] 
+    },
+    { 
+      id: "3",
+      name: 'Stable Diffusion', 
+      versions: ['v1.5', 'v2.0', 'v2.1', 'XL 1.0'] 
+    },
+    { 
+      id: "4",
+      name: 'Imagen', 
+      versions: ['Imagen 1', 'Imagen 2'] 
+    },
+    { 
+      id: "5",
+      name: 'Firefly', 
+      versions: ['v1', 'v2'] 
+    }
+  ];
+};
 
 // 더미 데이터
 const DUMMY_DATA = {
@@ -705,15 +737,18 @@ const userService = {
    * @returns {Promise<Object>} - 사용자 정보 객체
    */
   getUserInfo: async (userId) => {
-    console.log('사용자 정보 조회 요청:', userId);
     try {
-      // getUserById 함수를 호출하여 사용자 정보 가져오기
-      const userData = await userService.getUserById(userId);
-      console.log('사용자 정보 조회 성공:', userData);
-      return userData;
+        console.log(`사용자 ${userId} 정보 요청`);
+        
+        // 캐시 방지를 위한 타임스탬프 추가
+        const timestamp = new Date().getTime();
+        const response = await api.get(`/api/users/${userId}/?t=${timestamp}`);
+        
+        console.log('사용자 정보 응답:', response.data);
+        return response.data;
     } catch (error) {
-      console.error('사용자 정보 조회 실패:', error);
-      throw error;
+        console.error('사용자 정보 조회 중 오류:', error);
+        throw new Error(error.response?.data?.detail || '사용자 정보를 가져오는 중 오류가 발생했습니다.');
     }
   }
 };
@@ -1275,9 +1310,264 @@ const fileService = {
   }
 };
 
-// 모듈 내보내기
+// AI 모델 관련 API 서비스
+const modelService = {
+  // 모든 AI 모델 목록 가져오기
+  getAllModels: async () => {
+    try {
+      console.log('AI 모델 목록 요청');
+      
+      // MODEL_TEST_MODE에서는 하드코딩된 모델 목록 반환
+      if (MODEL_TEST_MODE) {
+        console.log('모델 테스트 모드: 하드코딩된 AI 모델 목록 반환');
+        return getHardcodedModelData();
+      }
+      
+      // 실제 API 호출
+      const response = await api.get('/api/ai-models/');
+      console.log('AI 모델 목록 응답:', response.data);
+      
+      // 백엔드 응답 구조에 따라 데이터 변환
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.data && response.data.results) {
+        // 페이지네이션 응답인 경우
+        return response.data.results;
+      } else if (response.data && response.data.models) {
+        // 중첩된 객체 구조인 경우
+        return response.data.models;
+      } else {
+        console.warn('예상치 못한 API 응답 형식:', response.data);
+        return [];
+      }
+    } catch (error) {
+      console.error('AI 모델 목록 조회 중 오류:', error);
+      console.error('응답 데이터:', error.response?.data);
+      
+      // API 호출 실패 시 항상 하드코딩된 데이터 반환 (fallback)
+      console.warn('모델 API 호출 실패, 하드코딩된 모델 데이터 반환');
+      return getHardcodedModelData();
+    }
+  },
+  
+  // 모델 추가
+  addModel: async (modelData) => {
+    try {
+      console.log('AI 모델 추가 요청 데이터:', modelData);
+      
+      // MODEL_TEST_MODE에서는 성공 응답 반환
+      if (MODEL_TEST_MODE) {
+        console.log('모델 테스트 모드: AI 모델 추가 성공 응답 반환');
+        return {
+          id: Date.now().toString(),
+          ...modelData,
+          success: true,
+          message: '모델이 성공적으로 추가되었습니다.'
+        };
+      }
+      
+      // 실제 API 호출
+      const response = await api.post('/api/ai-models/', modelData);
+      console.log('AI 모델 추가 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('AI 모델 추가 중 오류:', error);
+      console.error('응답 데이터:', error.response?.data);
+      
+      let errorMessage = 'AI 모델 추가 중 오류가 발생했습니다.';
+      
+      // 오류 메시지 정제
+      if (error.response?.data) {
+        if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.response.data.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+  },
+  
+  // 모델 수정
+  updateModel: async (modelId, modelData) => {
+    try {
+      console.log(`AI 모델 ${modelId} 수정 요청 데이터:`, modelData);
+      
+      // MODEL_TEST_MODE에서는 성공 응답 반환
+      if (MODEL_TEST_MODE) {
+        console.log('모델 테스트 모드: AI 모델 수정 성공 응답 반환');
+        return {
+          id: modelId,
+          ...modelData,
+          success: true,
+          message: '모델이 성공적으로 수정되었습니다.'
+        };
+      }
+      
+      // 실제 API 호출
+      const response = await api.put(`/api/ai-models/${modelId}/`, modelData);
+      console.log('AI 모델 수정 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('AI 모델 수정 중 오류:', error);
+      console.error('응답 데이터:', error.response?.data);
+      
+      let errorMessage = 'AI 모델 수정 중 오류가 발생했습니다.';
+      
+      // 오류 메시지 정제
+      if (error.response?.data) {
+        if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.response.data.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+  },
+  
+  // 모델 삭제
+  deleteModel: async (modelId) => {
+    try {
+      console.log(`AI 모델 ${modelId} 삭제 요청`);
+      
+      // MODEL_TEST_MODE에서는 성공 응답 반환
+      if (MODEL_TEST_MODE) {
+        console.log('모델 테스트 모드: AI 모델 삭제 성공 응답 반환');
+        return {
+          success: true,
+          message: '모델이 성공적으로 삭제되었습니다.'
+        };
+      }
+      
+      // 실제 API 호출
+      const response = await api.delete(`/api/ai-models/${modelId}/`);
+      console.log('AI 모델 삭제 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('AI 모델 삭제 중 오류:', error);
+      console.error('응답 데이터:', error.response?.data);
+      
+      let errorMessage = 'AI 모델 삭제 중 오류가 발생했습니다.';
+      
+      // 오류 메시지 정제
+      if (error.response?.data) {
+        if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.response.data.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+  },
+  
+  // 모델 버전 추가
+  addModelVersion: async (modelId, versionData) => {
+    try {
+      console.log(`AI 모델 ${modelId}에 버전 추가 요청 데이터:`, versionData);
+      
+      // MODEL_TEST_MODE에서는 성공 응답 반환
+      if (MODEL_TEST_MODE) {
+        console.log('모델 테스트 모드: AI 모델 버전 추가 성공 응답 반환');
+        return {
+          modelId,
+          version: versionData.version,
+          success: true,
+          message: '모델 버전이 성공적으로 추가되었습니다.'
+        };
+      }
+      
+      // 실제 API 호출
+      const response = await api.post(`/api/ai-models/${modelId}/versions/`, versionData);
+      console.log('AI 모델 버전 추가 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('AI 모델 버전 추가 중 오류:', error);
+      console.error('응답 데이터:', error.response?.data);
+      
+      let errorMessage = 'AI 모델 버전 추가 중 오류가 발생했습니다.';
+      
+      // 오류 메시지 정제
+      if (error.response?.data) {
+        if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.response.data.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+  },
+  
+  // 모델 버전 삭제
+  deleteModelVersion: async (modelId, version) => {
+    try {
+      console.log(`AI 모델 ${modelId}의 버전 ${version} 삭제 요청`);
+      
+      // MODEL_TEST_MODE에서는 성공 응답 반환
+      if (MODEL_TEST_MODE) {
+        console.log('모델 테스트 모드: AI 모델 버전 삭제 성공 응답 반환');
+        return {
+          success: true,
+          message: '모델 버전이 성공적으로 삭제되었습니다.'
+        };
+      }
+      
+      // 실제 API 호출
+      const response = await api.delete(`/api/ai-models/${modelId}/versions/${version}/`);
+      console.log('AI 모델 버전 삭제 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('AI 모델 버전 삭제 중 오류:', error);
+      console.error('응답 데이터:', error.response?.data);
+      
+      let errorMessage = 'AI 모델 버전 삭제 중 오류가 발생했습니다.';
+      
+      // 오류 메시지 정제
+      if (error.response?.data) {
+        if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.response.data.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+  }
+};
+
+// 내보내기
 export {
-  userService,
+  api,
+  API_BASE_URL,
   postService,
-  fileService
+  userService,
+  fileService,
+  modelService  // 새로운 modelService 추가
 }; 

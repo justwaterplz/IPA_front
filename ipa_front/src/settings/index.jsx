@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/pages/auth/components/AuthContext';
-import { userService } from '@/utils/apiService';
-import { Loader, User, Mail, Edit, Save, X, AlertCircle, Shield, CheckCircle, Clock, XCircle, Crown, Star, Camera, Lock, Key, KeyRound, AlertTriangle } from 'lucide-react';
+import { userService, API_BASE_URL } from '@/utils/apiService';
+import { Loader, User, Mail, Edit, Save, X, AlertCircle, Shield, CheckCircle, Clock, XCircle, Crown, Star, Camera, Lock, Key, KeyRound, AlertTriangle, Home, BookOpen, UserCircle, LogOut } from 'lucide-react';
 import ProfileImageModal from './components/ProfileImageModal';
 import { Link, useNavigate } from 'react-router-dom';
+import { logoutAndRedirect, navigateToMain } from '@/utils/navigationHelper';
+import Header from '@/components/layout/header.jsx';
 
-const Settings = () => {
-    const { user, updateUser, updatePermissionStatus } = useAuth();
+const Settings = ({ theme, setTheme }) => {
+    const { user, updateUser, updatePermissionStatus, logout } = useAuth();
     const navigate = useNavigate();
     const [isEditing, setIsEditing] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -123,20 +125,24 @@ const Settings = () => {
             // 로컬 상태 업데이트
             setUserStatus(newStatus);
             
-            // AuthContext의 권한 상태와 다른 경우 동기화
+            // AuthContext의 권한 상태와 다른 경우에만 동기화 (무한 리렌더링 방지)
             if (newStatus !== user.status && newStatus !== user.user_status) {
                 console.log('AuthContext 권한 상태 동기화 필요:', { 현재: user.status, 새상태: newStatus });
-                updatePermissionStatus(newStatus);
+                // 비동기 업데이트를 setTimeout으로 지연시켜 리렌더링 사이클 분리
+                setTimeout(() => {
+                    updatePermissionStatus(newStatus);
+                }, 0);
             }
-            
-            // 상태가 설정된 후 확인
-            setTimeout(() => {
-                console.log('설정 후 사용자 상태:', userStatus);
-            }, 100);
-            
-            // 페이지 로드 시 사용자 정보 새로고침
+        }
+    }, [user]); // updatePermissionStatus 제거
+    
+    // 페이지 마운트될 때 한 번만 실행되는 초기화 로직
+    useEffect(() => {
+        // 페이지 로드 시 한 번만 사용자 정보 새로고침
+        if (user?.id) {
             const fetchUserInfo = async () => {
                 try {
+                    setIsLoading(true);
                     const refreshedUser = await userService.getUserInfo(user.id);
                     console.log('새로고침된 사용자 정보:', refreshedUser);
                     
@@ -161,19 +167,21 @@ const Settings = () => {
                     
                     console.log('새로고침 후 상태:', refreshedStatus);
                     
-                    // 상태 업데이트
-                    setUserStatus(refreshedStatus);
+                    // 상태가 달라진 경우에만 업데이트
+                    if (refreshedStatus !== userStatus) {
+                        setUserStatus(refreshedStatus);
+                    }
                     
-                    // AuthContext 업데이트
-                    await updatePermissionStatus(refreshedStatus);
+                    setIsLoading(false);
                 } catch (error) {
                     console.error('사용자 정보 새로고침 중 오류:', error);
+                    setIsLoading(false);
                 }
             };
             
             fetchUserInfo();
         }
-    }, [user, updatePermissionStatus]);
+    }, []); // 빈 배열로 설정하여 컴포넌트 마운트시 한 번만 실행
 
     // 폼 데이터 변경 핸들러
     const handleChange = (e) => {
@@ -446,8 +454,21 @@ const Settings = () => {
     const handleProfileImageUpdate = (imageUrl) => {
         // 서버에서 이미지 URL을 반환하지 않았지만 업로드는 성공한 경우
         if (imageUrl === 'success') {
-            console.log('이미지 업로드 성공, 새로고침 없이 성공 메시지만 표시');
-            setSuccess('프로필 이미지가 성공적으로 업데이트되었습니다. 변경사항이 다음 로그인 시 또는 페이지 새로고침 후 적용됩니다.');
+            console.log('이미지 업로드 성공, 백엔드에서 최신 사용자 정보 가져오기');
+            // 사용자 정보를 다시 가져와서 최신 이미지 URL을 얻음
+            refreshUserInfo()
+                .then(() => {
+                    setSuccess('프로필 이미지가 성공적으로 업데이트되었습니다. 변경사항이 적용되었습니다.');
+                    
+                    // 5초 후에 성공 메시지 숨기기
+                    setTimeout(() => {
+                        setSuccess(null);
+                    }, 5000);
+                })
+                .catch((error) => {
+                    console.error('사용자 정보 새로고침 실패:', error);
+                    setError('프로필 이미지가 업로드되었지만 정보를 갱신하는 데 실패했습니다.');
+                });
             return;
         }
         
@@ -460,30 +481,100 @@ const Settings = () => {
         
         console.log('프로필 이미지 업데이트 (서버 URL):', imageUrl);
         
-        // 캐시 방지를 위해 타임스탬프 추가
-        const timestamp = new Date().getTime();
-        const imageWithTimestamp = imageUrl.includes('?') 
-            ? `${imageUrl}&t=${timestamp}` 
-            : `${imageUrl}?t=${timestamp}`;
+        // 상대 경로인 경우 API_BASE_URL을 붙여 완전한 URL로 만들기
+        if (imageUrl.startsWith('/') && !imageUrl.startsWith('//')) {
+            console.log('상대 경로를 완전한 URL로 변환:', `${API_BASE_URL}${imageUrl}`);
+            imageUrl = `${API_BASE_URL}${imageUrl}`;
+        }
+        
+        // 타임스탬프 추가 전 이미 있는지 확인
+        let imageWithTimestamp = imageUrl;
+        
+        // 이미 타임스탬프가 있는지 확인
+        const hasTimestamp = imageUrl.includes('?t=') || imageUrl.includes('&t=');
+        
+        // 타임스탬프가 없는 경우에만 추가
+        if (!hasTimestamp) {
+            const timestamp = new Date().getTime();
+            imageWithTimestamp = imageUrl.includes('?') 
+                ? `${imageUrl}&t=${timestamp}` 
+                : `${imageUrl}?t=${timestamp}`;
+        }
         
         // 로컬 스토리지에 최신 프로필 이미지 URL 저장
         const storageKey = `profile_image_${user.id}`;
         localStorage.setItem(storageKey, imageWithTimestamp);
         
+        // 로컬 상태 업데이트
         setProfileImage(imageWithTimestamp);
         
-        // 사용자 객체 업데이트는 제거 - 이미 API에서 처리됨
+        // 전역 상태(AuthContext) 업데이트
+        const updatedUser = {
+            ...user,
+            profile_image: imageWithTimestamp
+        };
         
-        setSuccess('프로필 이미지가 성공적으로 업데이트되었습니다.');
+        // 사용자 정보 업데이트 - 이미지만 업데이트하는 경우
+        updateUser(updatedUser, true)
+            .then(() => {
+                // "지금 적용" 버튼 추가를 위한 특정 문구 사용
+                setSuccess('프로필 이미지가 업데이트되었습니다. 지금 적용 버튼을 클릭하여 모든 페이지에 반영하세요.');
+            })
+            .catch((error) => {
+                console.error('프로필 이미지 전역 업데이트 실패:', error);
+                setError('프로필 이미지가 저장되었지만 모든 페이지에 반영되지 않았습니다. 페이지를 새로고침하세요.');
+            });
     };
 
     // 사용자 정보 새로고침 함수
     const refreshUserInfo = async () => {
         try {
             setIsLoading(true);
+            setError(null);
+            setSuccess(null);
+            
             // 사용자 정보 다시 가져오기
             const refreshedUser = await userService.getUserInfo(user.id);
             console.log('새로고침된 사용자 정보:', refreshedUser);
+            
+            // 프로필 이미지 URL을 가져와서 업데이트
+            if (refreshedUser.profile_image) {
+                let imageUrl = refreshedUser.profile_image;
+                
+                // 상대 경로인 경우 API_BASE_URL을 붙여 완전한 URL로 만들기
+                if (imageUrl.startsWith('/') && !imageUrl.startsWith('//')) {
+                    console.log('상대 경로를 완전한 URL로 변환:', `${API_BASE_URL}${imageUrl}`);
+                    imageUrl = `${API_BASE_URL}${imageUrl}`;
+                }
+                
+                // 이미 타임스탬프가 있는지 확인
+                let imageWithTimestamp = imageUrl;
+                const hasTimestamp = imageUrl.includes('?t=') || imageUrl.includes('&t=');
+                
+                // 타임스탬프가 없는 경우에만 추가
+                if (!hasTimestamp) {
+                    const timestamp = new Date().getTime();
+                    imageWithTimestamp = imageUrl.includes('?') 
+                        ? `${imageUrl}&t=${timestamp}` 
+                        : `${imageUrl}?t=${timestamp}`;
+                }
+                
+                // 로컬 스토리지에 이미지 URL 저장
+                const storageKey = `profile_image_${user.id}`;
+                localStorage.setItem(storageKey, imageWithTimestamp);
+                
+                // 로컬 상태 업데이트
+                setProfileImage(imageWithTimestamp);
+                
+                // 전역 상태 업데이트
+                const updatedUser = {
+                    ...user,
+                    profile_image: imageWithTimestamp
+                };
+                updateUser(updatedUser, true);
+                
+                console.log('프로필 이미지 새로고침:', imageWithTimestamp);
+            }
             
             // 권한 상태 확인
             let newStatus = 'not_requested';
@@ -509,10 +600,20 @@ const Settings = () => {
             // 상태 업데이트
             setUserStatus(newStatus);
             
-            // AuthContext 업데이트
-            await updatePermissionStatus(newStatus);
+            // AuthContext 업데이트 - 상태가 다른 경우에만 업데이트하고 리렌더링 사이클 분리
+            if (newStatus !== refreshedUser.status && newStatus !== refreshedUser.user_status) {
+                // setTimeout을 사용하여 상태 업데이트 사이클 분리
+                setTimeout(() => {
+                    updatePermissionStatus(newStatus);
+                }, 0);
+            }
             
-            setSuccess('사용자 정보가 새로고침되었습니다.');
+            setSuccess('사용자 정보가 성공적으로 새로고침되었습니다. (프로필 이미지, 권한 정보 등)');
+            
+            // 5초 후에 성공 메시지 숨기기
+            setTimeout(() => {
+                setSuccess(null);
+            }, 5000);
             
             return newStatus;
         } catch (error) {
@@ -525,25 +626,71 @@ const Settings = () => {
     };
 
     // 메인 페이지로 이동하는 함수
-    const handleNavigateToMain = async () => {
-        console.log('메인 페이지로 이동 시도');
-        
+    const handleNavigateToMain = () => {
         try {
-            // 사용자 상태 강제 업데이트
-            setUserStatus('approved');
-            await updatePermissionStatus('approved');
-            
-            // 메인 페이지로 이동
-            navigate('/');
+            console.log('메인 페이지로 이동 시도');
+            navigateToMain();
         } catch (error) {
             console.error('메인 페이지 이동 중 오류:', error);
-            // 오류가 발생해도 메인 페이지로 이동 시도
-            navigate('/');
+            alert('메인 페이지로 이동하는 데 문제가 발생했습니다.');
         }
+    };
+
+    const getProfileImageUrl = () => {
+        // 우선순위: 1. profileImage 상태 2. user.profile_image 3. 로컬 스토리지 4. 기본 이미지
+        let imageUrl = null;
+        
+        // 로컬 상태의 profileImage가 있는 경우 (보통 방금 업로드된 이미지)
+        if (profileImage) {
+            console.log('로컬 상태의 profileImage 사용:', profileImage);
+            imageUrl = profileImage;
+        }
+        // 사용자 객체에서 프로필 이미지 URL 가져오기
+        else if (user?.profile_image) {
+            console.log('사용자 객체에서 프로필 이미지 URL 사용:', user.profile_image);
+            imageUrl = user.profile_image;
+        } 
+        // 로컬 스토리지에서 이미지 URL 가져오기
+        else if (user?.id) {
+            const storageKey = `profile_image_${user.id}`;
+            const storedImage = localStorage.getItem(storageKey);
+            if (storedImage) {
+                console.log('로컬 스토리지에서 프로필 이미지 URL 사용:', storedImage);
+                imageUrl = storedImage;
+            }
+        }
+        
+        // 이미지 URL이 없으면 null 반환
+        if (!imageUrl) {
+            return null;
+        }
+        
+        // 상대 경로인 경우 API_BASE_URL을 붙여 완전한 URL로 만들기
+        if (imageUrl.startsWith('/') && !imageUrl.startsWith('//')) {
+            console.log('상대 경로를 완전한 URL로 변환:', `${API_BASE_URL}${imageUrl}`);
+            imageUrl = `${API_BASE_URL}${imageUrl}`;
+        }
+        
+        // 이미 타임스탬프가 있는지 확인
+        const hasTimestamp = imageUrl.includes('?t=') || imageUrl.includes('&t=');
+        
+        // 이미 타임스탬프가 있으면 그대로 반환
+        if (hasTimestamp) {
+            return imageUrl;
+        }
+        
+        // 타임스탬프 추가
+        const timestamp = new Date().getTime();
+        return imageUrl.includes('?') 
+            ? `${imageUrl}&t=${timestamp}` 
+            : `${imageUrl}?t=${timestamp}`;
     };
 
     return (
         <div className="container mx-auto px-4 py-8">
+            {/* Header 컴포넌트 추가 */}
+            <Header theme={theme} setTheme={setTheme} />
+            
             <h1 className="text-2xl font-bold mb-6">설정</h1>
             
             {/* 디버깅 정보 */}
@@ -569,7 +716,7 @@ const Settings = () => {
             {/* 프로필 섹션 컨테이너 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 {/* 프로필 정보 (왼쪽) */}
-                <div className="md:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                <div className={`md:col-span-2 rounded-lg shadow-lg p-6 ${theme === 'dark' ? 'bg-gray-800 text-white border border-gray-700' : 'bg-gray-50 text-gray-900 border border-gray-200'}`}>
                     <h2 className="text-xl font-semibold mb-4 flex items-center">
                         <User className="mr-2 h-5 w-5 text-primary" />
                         프로필 정보
@@ -763,23 +910,47 @@ const Settings = () => {
                                     지금 새로고침
                                 </button>
                             )}
+                            {success.includes('지금 적용 버튼') && (
+                                <button 
+                                    className="btn btn-sm btn-primary ml-2 animate-pulse"
+                                    onClick={refreshUserInfo}
+                                >
+                                    지금 적용
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
                 
                 {/* 프로필 이미지 (오른쪽) */}
-                <div className="md:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 flex flex-col items-center justify-center">
+                <div className={`md:col-span-1 rounded-lg shadow-lg p-6 flex flex-col items-center justify-center ${theme === 'dark' ? 'bg-gray-800 text-white border border-gray-700' : 'bg-gray-50 text-gray-900 border border-gray-200'}`}>
                     <h2 className="text-xl font-semibold mb-6 text-center">프로필 이미지</h2>
                     <div className="avatar mb-6">
                         <div className="w-40 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
-                            <img 
-                                src={profileImage || user?.profile_image || `https://placehold.co/200x200/9370DB/FFFFFF?text=${user?.username?.charAt(0) || 'U'}`} 
-                                alt={user?.username || '사용자'} 
-                                onError={(e) => {
-                                    e.target.onerror = null;
-                                    e.target.src = `https://placehold.co/200x200/9370DB/FFFFFF?text=${user?.username?.charAt(0) || 'U'}`;
-                                }}
-                            />
+                            {(() => {
+                                const profileImageUrl = getProfileImageUrl();
+                                
+                                if (profileImageUrl) {
+                                    return (
+                                        <img 
+                                            src={profileImageUrl} 
+                                            alt={user?.username || '사용자'} 
+                                            onError={(e) => {
+                                                console.error('프로필 이미지 로딩 실패:', e.target.src);
+                                                e.target.onerror = null; // 무한 루프 방지
+                                                e.target.src = `https://placehold.co/200x200/9370DB/FFFFFF?text=${user?.username?.charAt(0) || 'U'}`;
+                                            }}
+                                        />
+                                    );
+                                } else {
+                                    return (
+                                        <img 
+                                            src={`https://placehold.co/200x200/9370DB/FFFFFF?text=${user?.username?.charAt(0) || 'U'}`} 
+                                            alt={user?.username || '사용자'} 
+                                        />
+                                    );
+                                }
+                            })()}
                         </div>
                     </div>
                     <button 
@@ -797,7 +968,7 @@ const Settings = () => {
             </div>
             
             {/* 권한 신청 섹션 */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <div className={`rounded-lg shadow-lg p-6 mb-6 ${theme === 'dark' ? 'bg-gray-800 text-white border border-gray-700' : 'bg-gray-50 text-gray-900 border border-gray-200'}`}>
                 <h2 className="text-xl font-semibold mb-4 flex items-center">
                     <Shield className="mr-2 h-5 w-5 text-primary" />
                     권한 신청
@@ -891,7 +1062,28 @@ const Settings = () => {
                 {userStatus === 'pending' && (
                     <div className="alert alert-warning">
                         <AlertTriangle className="h-5 w-5" />
-                        <span>권한 신청이 검토 중입니다. 관리자의 승인을 기다려주세요.</span>
+                        <div className="flex flex-col">
+                            <span>권한 신청이 검토 중입니다. 관리자의 승인을 기다려주세요.</span>
+                            <div className="mt-2 flex gap-2">
+                                <button 
+                                    className="btn btn-outline btn-sm"
+                                    onClick={() => {
+                                        // 사용자에게 로그아웃 될 것임을 경고
+                                        if (window.confirm('로그인 페이지로 이동하면 로그아웃됩니다. 계속하시겠습니까?')) {
+                                            logoutAndRedirect(); // 바로 함수 호출
+                                        }
+                                    }}
+                                >
+                                    로그인 페이지로 돌아가기
+                                </button>
+                                <button 
+                                    className="btn btn-outline btn-sm"
+                                    onClick={refreshUserInfo}
+                                >
+                                    상태 새로고침
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
                 
@@ -919,9 +1111,93 @@ const Settings = () => {
                 )}
                 
                 {userStatus === 'rejected' && (
-                    <div className="alert alert-error">
-                        <XCircle className="h-5 w-5" />
-                        <span>권한 신청이 거부되었습니다. 자세한 내용은 관리자에게 문의하세요.</span>
+                    <div>
+                        <div className="alert alert-error mb-4">
+                            <XCircle className="h-5 w-5" />
+                            <span>권한 신청이 거부되었습니다. 필요한 정보를 보완하여 다시 신청할 수 있습니다.</span>
+                        </div>
+                        
+                        <p className="mb-4">
+                            권한이 필요한 경우 아래 양식을 통해 다시 신청하세요. 더 상세한 정보를 제공하면 승인 가능성이 높아집니다.
+                        </p>
+                        
+                        <form onSubmit={handlePermissionRequest} className="space-y-4 max-w-2xl">
+                            <div className="form-control">
+                                <label className="label">
+                                    <span className="label-text font-medium">이름</span>
+                                </label>
+                                <div className="flex -ml-2">
+                                    <div className="flex items-center pl-2">
+                                        <User className="h-5 w-5 mr-2 text-gray-400" />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        name="requestName"
+                                        value={formData.requestName}
+                                        onChange={handleChange}
+                                        className="input input-bordered w-full"
+                                        placeholder="실명을 입력하세요"
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="form-control">
+                                <label className="label">
+                                    <span className="label-text font-medium">소속 부서/팀</span>
+                                </label>
+                                <div className="flex -ml-2">
+                                    <div className="flex items-center pl-2">
+                                        <Shield className="h-5 w-5 mr-2 text-gray-400" />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        name="requestDepartment"
+                                        value={formData.requestDepartment}
+                                        onChange={handleChange}
+                                        className="input input-bordered w-full"
+                                        placeholder="소속 부서나 팀을 입력하세요"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="form-control">
+                                <label className="label">
+                                    <span className="label-text font-medium">신청 사유 (상세히 작성해 주세요)</span>
+                                </label>
+                                <div className="flex -ml-2">
+                                    <div className="flex items-center pl-2 self-start pt-3">
+                                        <AlertCircle className="h-5 w-5 mr-2 text-gray-400" />
+                                    </div>
+                                    <textarea
+                                        name="requestNote"
+                                        value={formData.requestNote}
+                                        onChange={handleChange}
+                                        className="textarea textarea-bordered w-full"
+                                        placeholder="권한이 필요한 이유를 상세히 설명해주세요. 이전 요청이 거부된 이유를 고려하여 작성하시면 도움이 됩니다."
+                                        rows={4}
+                                        required
+                                    ></textarea>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-6 flex justify-end">
+                                <button 
+                                    type="submit" 
+                                    className="btn btn-primary"
+                                    disabled={isLoading}
+                                >
+                                    {isLoading ? (
+                                        <>
+                                            <span className="loading loading-spinner"></span>
+                                            재신청 중...
+                                        </>
+                                    ) : (
+                                        <>권한 재신청</>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 )}
             </div>

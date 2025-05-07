@@ -13,6 +13,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { userService } from '@/utils/apiService';
+import { API_BASE_URL } from '@/utils/apiService';
 
 const AdminRequestList = () => {
     const [requests, setRequests] = useState([]);
@@ -106,6 +107,40 @@ const AdminRequestList = () => {
             default:
                 return <span className="badge badge-ghost">알 수 없음</span>;
         }
+    };
+
+    // 프로필 이미지 URL 가져오기 함수 추가
+    const getProfileImageUrl = (user) => {
+        if (!user) return null;
+        
+        // 우선순위: 1. profile_image 2. 기본 이미지
+        let imageUrl = null;
+        
+        if (user.profile_image) {
+            console.log('AdminRequestList: 사용자 객체에서 프로필 이미지 URL 사용:', user.profile_image);
+            imageUrl = user.profile_image;
+        } 
+        
+        // 이미지가 없는 경우 기본 이미지 반환
+        if (!imageUrl) {
+            const initial = user?.username?.charAt(0) || 'U';
+            return `https://placehold.co/100x100/9370DB/FFFFFF?text=${initial}`;
+        }
+        
+        // 상대 경로를 절대 경로로 변환
+        if (imageUrl.startsWith('/') && !imageUrl.startsWith('//')) {
+            imageUrl = `${API_BASE_URL}${imageUrl}`;
+        }
+        
+        // 타임스탬프 추가 (캐시 방지)
+        if (!imageUrl.includes('t=')) {
+            const timestamp = new Date().getTime();
+            imageUrl = imageUrl.includes('?') 
+                ? `${imageUrl}&t=${timestamp}` 
+                : `${imageUrl}?t=${timestamp}`;
+        }
+        
+        return imageUrl;
     };
 
     return (
@@ -211,8 +246,13 @@ const AdminRequestList = () => {
                                                         <div className="avatar">
                                                             <div className="w-8 rounded-full">
                                                                 <img 
-                                                                    src={request.user.profile_image || `https://placehold.co/100x100/9370DB/FFFFFF?text=${request.user.username.charAt(0)}`} 
+                                                                    src={getProfileImageUrl(request.user)} 
                                                                     alt={request.user.username} 
+                                                                    onError={(e) => {
+                                                                        console.error('AdminRequestList: 프로필 이미지 로딩 실패');
+                                                                        e.target.onerror = null;
+                                                                        e.target.src = `https://placehold.co/100x100/9370DB/FFFFFF?text=${request.user.username.charAt(0) || 'U'}`;
+                                                                    }}
                                                                 />
                                                             </div>
                                                         </div>
@@ -318,8 +358,13 @@ const AdminRequestList = () => {
                                         <div className="avatar">
                                             <div className="w-10 rounded-full">
                                                 <img 
-                                                    src={selectedRequest.user.profile_image || `https://placehold.co/100x100/9370DB/FFFFFF?text=${selectedRequest.user.username.charAt(0)}`} 
+                                                    src={getProfileImageUrl(selectedRequest.user)} 
                                                     alt={selectedRequest.user.username} 
+                                                    onError={(e) => {
+                                                        console.error('AdminRequestList: 프로필 이미지 로딩 실패');
+                                                        e.target.onerror = null;
+                                                        e.target.src = `https://placehold.co/100x100/9370DB/FFFFFF?text=${selectedRequest.user.username.charAt(0) || 'U'}`;
+                                                    }}
                                                 />
                                             </div>
                                         </div>

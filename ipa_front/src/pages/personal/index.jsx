@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/pages/auth/components/AuthContext';
-import { Edit, X, Check, Loader, User, ArrowLeft, Calendar } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Edit, X, Check, Loader, User, ArrowLeft, Calendar, Bell, Search, Link, MoreHorizontal } from 'lucide-react';
+import { Link as RouterLink } from 'react-router-dom';
 import { postService, userService } from '@/utils/apiService';
 import { API_BASE_URL } from '@/utils/apiService';
 
@@ -57,6 +57,49 @@ const Profile = () => {
         const fullUrl = `${API_BASE_URL}${imageField}`;
         console.log('API URL과 결합:', fullUrl);
         return fullUrl;
+    };
+
+    // 프로필 이미지 URL 가져오기 함수 추가
+    const getProfileImageUrl = () => {
+        // 우선순위: 1. user.profile_image 2. 로컬 스토리지 3. user.profileImage 4. 기본 이미지
+        let imageUrl = null;
+        
+        const storageKey = user?.id ? `profile_image_${user.id}` : null;
+        const storageImage = storageKey ? localStorage.getItem(storageKey) : null;
+        
+        if (user?.profile_image) {
+            console.log('Personal: 사용자 객체에서 프로필 이미지 URL 사용:', user.profile_image);
+            imageUrl = user.profile_image;
+        } 
+        else if (storageImage) {
+            console.log('Personal: 로컬 스토리지에서 프로필 이미지 복원:', storageImage);
+            imageUrl = storageImage;
+        }
+        else if (user?.profileImage) {
+            console.log('Personal: 대체 필드에서 프로필 이미지 URL 사용:', user.profileImage);
+            imageUrl = user.profileImage;
+        }
+        
+        // 이미지가 없는 경우 기본 이미지 반환
+        if (!imageUrl) {
+            const initial = user?.username?.charAt(0) || 'U';
+            return `https://placehold.co/100x100/9370DB/FFFFFF?text=${initial}`;
+        }
+        
+        // 상대 경로를 절대 경로로 변환
+        if (imageUrl.startsWith('/') && !imageUrl.startsWith('//')) {
+            imageUrl = `${API_BASE_URL}${imageUrl}`;
+        }
+        
+        // 타임스탬프 추가 (캐시 방지)
+        if (!imageUrl.includes('t=')) {
+            const timestamp = new Date().getTime();
+            imageUrl = imageUrl.includes('?') 
+                ? `${imageUrl}&t=${timestamp}` 
+                : `${imageUrl}?t=${timestamp}`;
+        }
+        
+        return imageUrl;
     };
 
     // 사용자 게시물 가져오기
@@ -308,29 +351,20 @@ const Profile = () => {
                                 <Loader className="animate-spin" />
                             </div>
                         )}
-                        {user?.profileImage ? (
-                            <img
-                                src={user.profileImage}
-                                alt="Profile"
-                                className={`w-full h-full object-cover transition-opacity duration-200 ${
-                                    imageLoaded.avatar ? 'opacity-100' : 'opacity-0'
-                                }`}
-                                onLoad={() => handleImageLoad('avatar')}
-                                onError={() => handleImageError('avatar')}
-                            />
-                        ) : (
-                            <div 
-                                className={`w-full h-full flex items-center justify-center bg-primary/10 ${
-                                    imageLoaded.avatar ? 'opacity-100' : 'opacity-0'
-                                }`}
-                                onLoad={() => handleImageLoad('avatar')}
-                            >
-                                <User 
-                                    size={48} 
-                                    className="text-primary"
-                                />
-                            </div>
-                        )}
+                        <img
+                            src={getProfileImageUrl()}
+                            alt={user?.username || "Profile"}
+                            className={`w-full h-full object-cover transition-opacity duration-200 ${
+                                imageLoaded.avatar ? 'opacity-100' : 'opacity-0'
+                            }`}
+                            onLoad={() => handleImageLoad('avatar')}
+                            onError={(e) => {
+                                console.error('Personal: 프로필 이미지 로딩 실패');
+                                e.target.onerror = null;
+                                e.target.src = `https://placehold.co/100x100/9370DB/FFFFFF?text=${user?.username?.charAt(0) || 'U'}`;
+                                handleImageLoad('avatar');
+                            }}
+                        />
                     </div>
                 </div>
 
@@ -346,13 +380,13 @@ const Profile = () => {
                 
                 {/* 게시글 작성 버튼 추가 */}
                 <div className="mt-4 sm:mt-0 sm:ml-auto">
-                    <Link 
+                    <RouterLink 
                         to="/post" 
                         className="btn btn-primary"
                     >
                         <ArrowLeft size={18} />
                         목록으로
-                    </Link>
+                    </RouterLink>
                 </div>
             </div>
 
@@ -501,7 +535,7 @@ const Profile = () => {
                             </div>
                         ) : (
                             userPosts.map((post, index) => (
-                                <Link 
+                                <RouterLink 
                                     key={post.id}
                                     to={`/posts/${post.id}`}
                                     className="carousel-item relative w-60 h-60"
@@ -536,7 +570,7 @@ const Profile = () => {
                                             </div>
                                         </div>
                                     </div>
-                                </Link>
+                                </RouterLink>
                             ))
                         )}
                     </div>

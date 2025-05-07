@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { User, LogOut, Search, Upload, Shield } from 'lucide-react';
 import { useAuth, USER_ROLES } from '@/pages/auth/components/AuthContext';
 import SearchModal from '@/pages/search/components/SearchModal';
+import { API_BASE_URL } from '@/utils/apiService';
 
 const Header = ({ theme, setTheme }) => {
     const navigate = useNavigate();
@@ -29,6 +30,56 @@ const Header = ({ theme, setTheme }) => {
     // 관리자 여부 확인
     const isAdmin = userRole === USER_ROLES.ADMIN;
 
+    // 이미지 URL 결정 로직을 함수로 추출
+    const getProfileImageUrl = () => {
+        // 우선순위: 1. user.profile_image 2. 로컬 스토리지 3. user.profileImage 4. 기본 이미지
+        let imageUrl = null;
+        
+        // 로컬 스토리지 키 생성
+        const storageKey = user?.id ? `profile_image_${user.id}` : null;
+        
+        // 사용자 객체에서 프로필 이미지 URL 가져오기
+        if (user?.profile_image) {
+            console.log('사용자 객체에서 프로필 이미지 URL 사용:', user.profile_image);
+            imageUrl = user.profile_image;
+        } 
+        // 로컬 스토리지에서 이미지 URL 가져오기
+        else if (storageKey && localStorage.getItem(storageKey)) {
+            console.log('로컬 스토리지에서 프로필 이미지 URL 사용:', localStorage.getItem(storageKey));
+            imageUrl = localStorage.getItem(storageKey);
+        } 
+        // 대체 필드에서 이미지 URL 가져오기
+        else if (user?.profileImage) {
+            console.log('대체 필드에서 프로필 이미지 URL 사용:', user.profileImage);
+            imageUrl = user.profileImage;
+        }
+        
+        // 이미지 URL이 없으면 null 반환
+        if (!imageUrl) {
+            return null;
+        }
+        
+        // 상대 경로인 경우 API_BASE_URL을 붙여 완전한 URL로 만들기
+        if (imageUrl.startsWith('/') && !imageUrl.startsWith('//')) {
+            console.log('상대 경로를 완전한 URL로 변환:', `${API_BASE_URL}${imageUrl}`);
+            imageUrl = `${API_BASE_URL}${imageUrl}`;
+        }
+        
+        // 이미 타임스탬프가 있는지 확인
+        const hasTimestamp = imageUrl.includes('?t=') || imageUrl.includes('&t=');
+        
+        // 이미 타임스탬프가 있으면 그대로 반환
+        if (hasTimestamp) {
+            return imageUrl;
+        }
+        
+        // 타임스탬프 추가
+        const timestamp = new Date().getTime();
+        return imageUrl.includes('?') 
+            ? `${imageUrl}&t=${timestamp}` 
+            : `${imageUrl}?t=${timestamp}`;
+    };
+
     return (
         <>
             <header className="fixed top-0 left-0 right-0 z-[100] w-full bg-base-100 shadow-sm">
@@ -52,12 +103,12 @@ const Header = ({ theme, setTheme }) => {
                                 </Link>
                             )}
                             
-                            {/* 관리자 패널 버튼 - 관리자만 표시 */}
+                            {/* 관리자 패널 버튼 - 관리자만 표시 -> 중복되는 버튼이라 주석처리
                             {isAuthenticated && isAdmin && (
                                 <Link to="/admin" className="btn btn-square tooltip tooltip-bottom flex items-center justify-center" data-tip="관리자 패널">
                                     <Shield size={20} className="m-auto" />
                                 </Link>
-                            )}
+                            )} */}
                             
                             {/* 검색 */}
                             <button className="btn btn-square tooltip tooltip-bottom flex items-center justify-center" data-tip="검색" onClick={handleSearchClick}>
@@ -80,21 +131,30 @@ const Header = ({ theme, setTheme }) => {
                                 <div className="dropdown dropdown-end relative">
                                     <div tabIndex={0} role="button" className="btn btn-ghost btn-circle avatar">
                                         <div className="w-10 rounded-full">
-                                            {user?.profile_image || user?.profileImage ? (
-                                                <img 
-                                                    alt="user profile" 
-                                                    src={user.profile_image || user.profileImage || (user?.id ? localStorage.getItem(`profile_image_${user.id}`) : null)} 
-                                                    className="w-full h-full object-cover"
-                                                    onError={(e) => {
-                                                        e.target.onerror = null;
-                                                        e.target.src = `https://placehold.co/200x200/9370DB/FFFFFF?text=${user?.username?.charAt(0) || 'U'}`;
-                                                    }}
-                                                />
-                                            ) : (
-                                                <div className="bg-indigo-200 w-full h-full grid place-items-center rounded-full">
-                                                    <User size={24} />
-                                                </div>
-                                            )}
+                                            {(() => {
+                                                const profileImageUrl = getProfileImageUrl();
+                                                
+                                                if (profileImageUrl) {
+                                                    return (
+                                                        <img 
+                                                            alt={`${user?.username || '사용자'} 프로필`} 
+                                                            src={profileImageUrl} 
+                                                            className="w-full h-full object-cover"
+                                                            onError={(e) => {
+                                                                console.log('프로필 이미지 로딩 실패, 기본 이미지로 대체:', e.target.src);
+                                                                e.target.onerror = null; // 무한 루프 방지
+                                                                e.target.src = `https://placehold.co/200x200/9370DB/FFFFFF?text=${user?.username?.charAt(0) || 'U'}`;
+                                                            }}
+                                                        />
+                                                    );
+                                                } else {
+                                                    return (
+                                                        <div className="bg-indigo-200 w-full h-full grid place-items-center rounded-full">
+                                                            <User size={24} />
+                                                        </div>
+                                                    );
+                                                }
+                                            })()}
                                         </div>
                                     </div>
                                     <ul tabIndex={0} 

@@ -6,6 +6,7 @@ import AuthForm from '@/pages/auth';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import PostDetail from '@/pages/postDetail';
 import { AuthProvider, useAuth, USER_ROLES } from '@/pages/auth/components/AuthContext';
+import { ModelProvider } from '@/contexts/ModelContext';
 import Profile from '@/pages/personal';
 import PublicProfile from './pages/personal/components/publicProfile';
 import Search from '@/pages/search';
@@ -30,7 +31,7 @@ const HomeRedirect = () => {
   }
   
   // 권한이 있는 사용자는 포스트 목록으로 리다이렉트
-  return <PostList />;
+  return <Navigate to="/post" replace />;
 };
 
 // 회원가입 후 리다이렉트 컴포넌트
@@ -57,54 +58,63 @@ const App = () => {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
+    
+    // Tailwind의 dark 모드 동기화를 위해 dark 클래스 추가/제거
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }, [theme]);
 
   return (
     <>
         <AuthProvider>
-          <Router>
-              <Routes>
-                  <Route element={<RootLayout theme={theme} setTheme={setTheme} />}>
-                      <Route path="/" element={<HomeRedirect />} />
-                      <Route path="/post" element={
-                          <ProtectedRoute requiredRole={USER_ROLES.USER}>
-                              <PostList />
-                          </ProtectedRoute>
-                      } />
-                      <Route path="/post/:id" element={<PostDetail />} />
-                      <Route path="/login" element={<AuthForm theme={theme} setTheme={setTheme} />} />
-                      <Route path="/register" element={<AuthForm theme={theme} setTheme={setTheme} isRegister={true} />} />
-                      <Route path="/register/success" element={<RegisterRedirect />} />
-                      <Route path="/posts/:id" element={<PostDetail />} />
-                      <Route path="/profile" element={
-                          <ProtectedRoute requiredRole={USER_ROLES.USER}>
-                              <Profile />
-                          </ProtectedRoute>
-                      } />
-                      <Route path="/users/:id" element={<PublicProfile />} />
-                      <Route path="/search" element={
-                          <ProtectedRoute requiredRole={USER_ROLES.USER}>
-                              <Search />
-                          </ProtectedRoute>
-                      } />
-                      <Route path="/settings" element={
-                          <ProtectedRoute requiredRole={USER_ROLES.PENDING}>
-                              <Settings />
-                          </ProtectedRoute>
-                      } />
-                      <Route path="/upload" element={
-                          <ProtectedRoute requiredRole={USER_ROLES.USER}>
-                              <UploadPage />
-                          </ProtectedRoute>
-                      } />
-                      <Route path="/admin" element={
-                          <ProtectedRoute requiredRole={USER_ROLES.ADMIN}>
-                              <AdminPanel />
-                          </ProtectedRoute>
-                      } />
-                  </Route>
-              </Routes>
-          </Router>
+          <ModelProvider>
+            <Router>
+                <Routes>
+                    <Route element={<RootLayout theme={theme} setTheme={setTheme} />}>
+                        <Route path="/" element={<HomeRedirect />} />
+                        <Route path="/post" element={
+                            <ProtectedRoute requiredRole={USER_ROLES.USER}>
+                                <PostList />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/post/:id" element={<PostDetail />} />
+                        <Route path="/login" element={<AuthForm theme={theme} setTheme={setTheme} />} />
+                        <Route path="/register" element={<AuthForm theme={theme} setTheme={setTheme} isRegister={true} />} />
+                        <Route path="/register/success" element={<RegisterRedirect />} />
+                        <Route path="/posts/:id" element={<PostDetail />} />
+                        <Route path="/profile" element={
+                            <ProtectedRoute requiredRole={USER_ROLES.USER}>
+                                <Profile />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/users/:id" element={<PublicProfile />} />
+                        <Route path="/search" element={
+                            <ProtectedRoute requiredRole={USER_ROLES.USER}>
+                                <Search />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/settings" element={
+                            <ProtectedRoute requiredRole={USER_ROLES.PENDING}>
+                                <Settings theme={theme} setTheme={setTheme} />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/upload" element={
+                            <ProtectedRoute requiredRole={USER_ROLES.USER}>
+                                <UploadPage />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/admin" element={
+                            <ProtectedRoute requiredRole={USER_ROLES.ADMIN}>
+                                <AdminPanel />
+                            </ProtectedRoute>
+                        } />
+                    </Route>
+                </Routes>
+            </Router>
+          </ModelProvider>
         </AuthProvider>
     </>
   )

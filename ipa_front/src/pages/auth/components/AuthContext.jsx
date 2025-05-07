@@ -224,7 +224,7 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const updateUser = async (userData) => {
+    const updateUser = async (userData, skipApiCall = false) => {
         try {
             setLoading(true);
             
@@ -232,13 +232,35 @@ export const AuthProvider = ({ children }) => {
                 throw new Error('사용자 정보가 없습니다.');
             }
             
-            const updatedUser = await userService.updateUser(user.id, userData);
+            let updatedUser;
+            
+            // skipApiCall이 true인 경우 API 호출을 건너뛰고 상태만 업데이트 (이미지 업데이트 등의 경우)
+            if (skipApiCall) {
+                console.log('API 호출 생략, 상태만 업데이트:', userData);
+                updatedUser = { ...user, ...userData };
+            } else {
+                // 일반적인 경우: API 호출로 사용자 정보 업데이트
+                updatedUser = await userService.updateUser(user.id, userData);
+            }
             
             // 업데이트된 사용자 정보 설정
             setUser(prevUser => ({
                 ...prevUser,
                 ...updatedUser
             }));
+            
+            // 프로필 이미지가 있으면 로컬 스토리지에 저장
+            if (updatedUser.profile_image) {
+                const timestamp = new Date().getTime();
+                const imageWithTimestamp = updatedUser.profile_image.includes('?') 
+                    ? `${updatedUser.profile_image}&t=${timestamp}` 
+                    : `${updatedUser.profile_image}?t=${timestamp}`;
+                
+                // 사용자 ID를 포함한 고유 키 사용
+                const storageKey = `profile_image_${updatedUser.id}`;
+                localStorage.setItem(storageKey, imageWithTimestamp);
+                console.log('상태 업데이트 시 프로필 이미지 저장:', imageWithTimestamp, '키:', storageKey);
+            }
             
             return updatedUser;
         } catch (error) {
